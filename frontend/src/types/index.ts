@@ -163,6 +163,16 @@ export interface AIRecommendationResponse {
   actions: string[];
 }
 
+export interface AIMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  response?: AIRecommendationResponse;
+  error?: string;
+  loading?: boolean;
+}
+
 export interface RiskComponentBreakdown {
   weather_score: number;
   alert_score: number;
