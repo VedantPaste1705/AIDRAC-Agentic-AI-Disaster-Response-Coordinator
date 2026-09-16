@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MaterialIcon from '../components/ui/MaterialIcon';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useApi } from '../hooks/useApi';
 import { useSettings } from '../context/SettingsContext';
 import { locationApi } from '../services/api';
-import type { NearbyResponse, NearbyPlace } from '../types';
+import type { NearbyResponse, NearbyPlace, EmergencyDestinationType } from '../types';
 import { DESTINATION_LABELS } from '../types';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -39,8 +40,20 @@ export default function Shelters() {
   const { settings } = useSettings();
   const geo = useGeolocation({ watch: false });
   const position = geo.position;
+  const navigate = useNavigate();
 
   const radiusMeters = settings.emergency_radius * 1000;
+
+  const handleNavigate = (place: NearbyPlace, type: EmergencyDestinationType) => {
+    navigate('/map', {
+      state: {
+        emergencyRoute: true,
+        userPosition: position ?? undefined,
+        destinationType: type,
+        destinationItem: { item: place, distanceKm: place.distance },
+      },
+    });
+  };
 
   const { data: nearby, loading, error, refetch } = useApi<NearbyResponse>(
     () => position ? locationApi.nearby(position.lat, position.lng, radiusMeters) : Promise.reject('no gps'),
@@ -127,12 +140,23 @@ export default function Shelters() {
                 <MaterialIcon icon="my_location" className="text-base" />
                 {s.latitude.toFixed(4)}, {s.longitude.toFixed(4)}
               </div>
-              <span className="flex items-center gap-1 text-sm uppercase font-mono tracking-widest px-3 py-1.5 rounded bg-primary-500/[0.12] text-primary-400 border border-primary-500/[0.25] whitespace-nowrap">
-                <MaterialIcon icon="navigation" className="text-sm" />
-                {s.distance < 1
-                  ? `${(s.distance * 1000).toFixed(0)} m`
-                  : `${(s.distance).toFixed(2)} km`}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-sm uppercase font-mono tracking-widest px-3 py-1.5 rounded bg-primary-500/[0.12] text-primary-400 border border-primary-500/[0.25] whitespace-nowrap">
+                  <MaterialIcon icon="navigation" className="text-sm" />
+                  {s.distance < 1
+                    ? `${(s.distance * 1000).toFixed(0)} m`
+                    : `${(s.distance).toFixed(2)} km`}
+                </span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<MaterialIcon icon="navigation" className="h-4 w-4" />}
+                  onClick={() => handleNavigate(s, s.category as EmergencyDestinationType)}
+                  className="whitespace-nowrap"
+                >
+                  Navigate
+                </Button>
+              </div>
             </div>
           </Card>
         ))}
