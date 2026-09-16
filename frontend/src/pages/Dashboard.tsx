@@ -374,26 +374,27 @@ export default function Dashboard() {
       </Card>
 
       {/* ===== 4. Emergency Contacts ===== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {CONTACTS.map((contact, i) => (
           <div
             key={contact.name}
-            className="flex items-center justify-between p-4 rounded-xl border border-slate-700/40 bg-slate-900/50 backdrop-blur-sm hover:bg-slate-800/50 transition-colors"
+            className="p-4 rounded-xl border border-slate-700/40 bg-slate-900/50 backdrop-blur-sm hover:bg-slate-800/50 transition-colors"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50 shrink-0">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50 shrink-0 mt-0.5">
                 <MaterialIcon icon={contact.icon} className={`text-xl ${contact.color}`} />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-300 truncate">{contact.name}</p>
                 <p className="text-base font-bold font-display text-white tracking-tight">{contact.number}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center justify-end gap-2 mt-3 sm:mt-0 sm:justify-end">
               <button
                 onClick={() => handleCopy(contact.number, i)}
                 className="w-10 h-10 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors flex items-center justify-center cursor-pointer"
                 title="Copy number"
+                aria-label={`Copy ${contact.name} number`}
               >
                 {copiedIndex === i ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
               </button>
@@ -401,6 +402,7 @@ export default function Dashboard() {
                 href={`tel:${contact.number}`}
                 className="w-10 h-10 rounded-lg bg-primary-500/15 border border-primary-500/25 text-primary-400 hover:bg-primary-500/25 transition-colors flex items-center justify-center cursor-pointer"
                 title="Call"
+                aria-label={`Call ${contact.name}`}
               >
                 <Phone className="h-4 w-4" />
               </a>
