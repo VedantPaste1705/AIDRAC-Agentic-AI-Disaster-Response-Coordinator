@@ -1,11 +1,13 @@
 import math
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from app.models.alert import Alert
 from app.schemas.alert import AlertCreate
+from app.utils.latency import LatencyTracker
 
 logger = logging.getLogger("aidrac.services.alert")
 
@@ -69,7 +71,11 @@ class AlertService:
         lat: float | None = None,
         lng: float | None = None,
         all_alerts: bool = False,
+        _tracker: Optional[LatencyTracker] = None,
     ) -> list[Alert]:
+        if _tracker:
+            _tracker.start("alert_db_query_all")
+        
         now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(Alert)
@@ -87,6 +93,8 @@ class AlertService:
         if lat is not None and lng is not None and not all_alerts:
             alerts = self._filter_by_location(alerts, lat, lng)
 
+        if _tracker:
+            _tracker.end("alert_db_query_all")
         return alerts
 
     async def get_active(self) -> list[Alert]:

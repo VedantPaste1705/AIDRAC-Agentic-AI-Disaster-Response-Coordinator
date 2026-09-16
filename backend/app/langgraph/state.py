@@ -21,3 +21,4 @@ class AgentState(BaseModel):
     destination: Optional[DestinationState] = None
     route: Optional[RouteState] = None
     recommendation: Optional[RecommendationState] = None
+    request_id: Optional[str] = None

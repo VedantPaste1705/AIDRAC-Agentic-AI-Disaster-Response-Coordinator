@@ -2,6 +2,7 @@ from app.langgraph.state import AgentState
 from app.langgraph.models import LocationState
 from app.langgraph.graph import graph, checkpointed_graph
 from app.ai.schemas import AIRecommendationResponse, RecommendedDestination
+from app.utils.latency import LatencyTracker
 
 
 class IncidentService:
@@ -18,21 +19,41 @@ class IncidentService:
         lat: float | None = None,
         lng: float | None = None,
         incident_id: str | None = None,
+        _tracker: LatencyTracker | None = None,
     ) -> AIRecommendationResponse:
         location = None
         if lat is not None and lng is not None:
             location = LocationState(latitude=lat, longitude=lng)
 
+        if _tracker:
+            _tracker.mark("incident_service_start")
+
         if incident_id:
             state_dict = await self._restore_or_create(incident_id, question, location)
             config = {"configurable": {"thread_id": incident_id}}
-            result = await self._checkpointed_graph.ainvoke(state_dict, config)
-            print("[Memory] Checkpoint saved")
+            if _tracker:
+                _tracker.start("langgraph_checkpointed_invoke")
+                # Inject request_id into state for node-level tracking
+                state_dict["request_id"] = _tracker.request_id
+                result = await self._checkpointed_graph.ainvoke(state_dict, config)
+                _tracker.end("langgraph_checkpointed_invoke")
+                print("[Memory] Checkpoint saved")
+            else:
+                result = await self._checkpointed_graph.ainvoke(state_dict, config)
+                print("[Memory] Checkpoint saved")
         else:
             print("[Memory] Using stateless graph")
             initial = AgentState(user_question=question, location=location)
-            result = await self._graph.ainvoke(initial.model_dump())
+            if _tracker:
+                _tracker.start("langgraph_stateless_invoke")
+                initial.request_id = _tracker.request_id
+                result = await self._graph.ainvoke(initial.model_dump())
+                _tracker.end("langgraph_stateless_invoke")
+            else:
+                result = await self._graph.ainvoke(initial.model_dump())
 
+        if _tracker:
+            _tracker.mark("incident_service_end")
         return self._to_response(result)
 
     async def get_state(self, incident_id: str) -> dict | None:

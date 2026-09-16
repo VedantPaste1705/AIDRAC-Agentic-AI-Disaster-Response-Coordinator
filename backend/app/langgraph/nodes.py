@@ -1,4 +1,5 @@
 import asyncio
+from app.utils.latency import get_tracker
 
 from app.langgraph.state import AgentState
 from app.langgraph.models import (
@@ -41,15 +42,28 @@ _DEGRADED_INDICATORS = (
 )
 
 
+def _get_tracker(state: AgentState):
+    """Get tracker from request_id in state."""
+    if state.request_id:
+        return get_tracker(state.request_id)
+    return None
+
+
 async def weather_node(state: AgentState) -> dict:
+    tracker = _get_tracker(state)
+    if tracker:
+        tracker.start("node_weather")
+    
     print("[LangGraph] Weather started")
     lat = state.location.latitude if state.location else None
     lng = state.location.longitude if state.location else None
 
     if lat is not None and lng is not None:
         try:
-            data = await _weather_service.get_current_weather(lat, lng)
+            data = await _weather_service.get_current_weather(lat, lng, _tracker=tracker)
             risk = _infer_weather_risk(data)
+            if tracker:
+                tracker.end("node_weather")
             return {
                 "weather": WeatherState(
                     temperature=data.get("temperature"),
@@ -65,10 +79,16 @@ async def weather_node(state: AgentState) -> dict:
         except Exception:
             pass
 
+    if tracker:
+        tracker.end("node_weather")
     return {"weather": WeatherState()}
 
 
 async def alert_node(state: AgentState) -> dict:
+    tracker = _get_tracker(state)
+    if tracker:
+        tracker.start("node_alert")
+    
     print("[LangGraph] Alert started")
     lat = state.location.latitude if state.location else None
     lng = state.location.longitude if state.location else None
@@ -76,7 +96,7 @@ async def alert_node(state: AgentState) -> dict:
     try:
         async with async_session_factory() as db:
             service = AlertService(db)
-            alerts = await service.get_all(lat=lat, lng=lng)
+            alerts = await service.get_all(lat=lat, lng=lng, _tracker=tracker)
 
         if alerts:
             items = [
@@ -92,6 +112,8 @@ async def alert_node(state: AgentState) -> dict:
                 for a in alerts
             ]
             highest = min(alerts, key=lambda a: SEVERITY_RANK.get(a.severity, 5))
+            if tracker:
+                tracker.end("node_alert")
             return {
                 "alerts": AlertState(
                     alerts=items,
@@ -102,27 +124,39 @@ async def alert_node(state: AgentState) -> dict:
     except Exception:
         pass
 
+    if tracker:
+        tracker.end("node_alert")
     return {"alerts": AlertState()}
 
 
 async def infrastructure_node(state: AgentState) -> dict:
+    tracker = _get_tracker(state)
+    if tracker:
+        tracker.start("node_infrastructure")
+    
     print("[LangGraph] Infrastructure started")
     lat = state.location.latitude if state.location else None
     lng = state.location.longitude if state.location else None
 
     if lat is not None and lng is not None:
         try:
+            if tracker:
+                tracker.start("infrastructure_overpass_gather")
             hospitals, shelters, community_centres, schools, police, firestations, pharmacies = (
                 await asyncio.gather(
-                    _location_service.get_nearby_hospitals(lat, lng),
-                    _location_service.get_nearby_shelters(lat, lng),
-                    _location_service.get_nearby_community_centres(lat, lng),
-                    _location_service.get_nearby_schools(lat, lng),
-                    _location_service.get_nearby_police(lat, lng),
-                    _location_service.get_nearby_firestations(lat, lng),
-                    _location_service.get_nearby_pharmacies(lat, lng),
+                    _location_service.get_nearby_hospitals(lat, lng, _tracker=tracker),
+                    _location_service.get_nearby_shelters(lat, lng, _tracker=tracker),
+                    _location_service.get_nearby_community_centres(lat, lng, _tracker=tracker),
+                    _location_service.get_nearby_schools(lat, lng, _tracker=tracker),
+                    _location_service.get_nearby_police(lat, lng, _tracker=tracker),
+                    _location_service.get_nearby_firestations(lat, lng, _tracker=tracker),
+                    _location_service.get_nearby_pharmacies(lat, lng, _tracker=tracker),
                 )
             )
+            if tracker:
+                tracker.end("infrastructure_overpass_gather")
+            if tracker:
+                tracker.end("node_infrastructure")
             return {
                 "infrastructure": InfrastructureState(
                     hospitals=[InfrastructureItem(**h) for h in hospitals],
@@ -137,10 +171,16 @@ async def infrastructure_node(state: AgentState) -> dict:
         except Exception:
             pass
 
+    if tracker:
+        tracker.end("node_infrastructure")
     return {"infrastructure": InfrastructureState()}
 
 
 async def route_node(state: AgentState) -> dict:
+    tracker = _get_tracker(state)
+    if tracker:
+        tracker.start("node_route")
+    
     print("[LangGraph] Route started")
     lat = state.location.latitude if state.location else None
     lng = state.location.longitude if state.location else None
@@ -155,7 +195,10 @@ async def route_node(state: AgentState) -> dict:
                     lat, lng,
                     dest_item.latitude, dest_item.longitude,
                     destination_type=dest_type or "destination",
+                    _tracker=tracker,
                 )
+                if tracker:
+                    tracker.end("node_route")
                 return {
                     "destination": DestinationState(
                         destination_type=dest_type,
@@ -166,6 +209,8 @@ async def route_node(state: AgentState) -> dict:
             except Exception:
                 pass
 
+    if tracker:
+        tracker.end("node_route")
     return {
         "destination": DestinationState(),
         "route": RouteState(),
@@ -173,6 +218,10 @@ async def route_node(state: AgentState) -> dict:
 
 
 async def coordinator_node(state: AgentState) -> dict:
+    tracker = _get_tracker(state)
+    if tracker:
+        tracker.start("node_coordinator")
+    
     print("[LangGraph] Coordinator started")
     print("[Coordinator] Building LLM context")
 
@@ -189,6 +238,8 @@ async def coordinator_node(state: AgentState) -> dict:
     alerts_raw = state.alerts.alerts if state.alerts else []
 
     print("[Coordinator] Running risk assessment")
+    if tracker:
+        tracker.start("risk_assessment")
     assessment = _risk_service.evaluate(
         lat=lat,
         lng=lng,
@@ -196,16 +247,27 @@ async def coordinator_node(state: AgentState) -> dict:
         alerts=alerts_raw,
         infrastructure=state.infrastructure,
     )
+    if tracker:
+        tracker.end("risk_assessment")
     print(f"[Coordinator] User risk: {assessment.user_risk} | Regional alert: {assessment.regional_alert_severity}")
 
+    if tracker:
+        tracker.start("context_builder")
     context = StateContextBuilder.build(state, assessment)
+    if tracker:
+        tracker.end("context_builder")
 
     try:
         print("[Coordinator] Calling AIService")
+        if tracker:
+            tracker.start("ai_service_get_recommendation")
         ai_response: AIRecommendationResponse = await _ai_service.get_recommendation(
             question=state.user_question,
             context=context,
+            _tracker=tracker,
         )
+        if tracker:
+            tracker.end("ai_service_get_recommendation")
 
         if _is_degraded(ai_response):
             print(f"[Coordinator] AI unavailable — reason: {ai_response.reason}")
@@ -219,6 +281,8 @@ async def coordinator_node(state: AgentState) -> dict:
         print("[Coordinator] Using deterministic fallback")
         rec = _deterministic_recommendation(state, assessment, source="fallback")
 
+    if tracker:
+        tracker.end("node_coordinator")
     return {"recommendation": rec}
 
 

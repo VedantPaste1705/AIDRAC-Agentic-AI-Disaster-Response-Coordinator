@@ -1,7 +1,8 @@
 import math
 import time
-from typing import Any
+from typing import Any, Optional
 from app.services.overpass_service import OverpassService, OverpassError
+from app.utils.latency import LatencyTracker
 
 DEFAULT_RADIUS = 10_000
 CACHE_TTL = 600
@@ -40,28 +41,28 @@ class LocationService:
         self._overpass = OverpassService()
         self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
-    async def get_nearby_hospitals(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("hospitals", lat, lng, radius)
+    async def get_nearby_hospitals(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("hospitals", lat, lng, radius, _tracker)
 
-    async def get_nearby_shelters(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("shelters", lat, lng, radius)
+    async def get_nearby_shelters(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("shelters", lat, lng, radius, _tracker)
 
-    async def get_nearby_community_centres(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("community_centres", lat, lng, radius)
+    async def get_nearby_community_centres(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("community_centres", lat, lng, radius, _tracker)
 
-    async def get_nearby_schools(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("schools", lat, lng, radius)
+    async def get_nearby_schools(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("schools", lat, lng, radius, _tracker)
 
-    async def get_nearby_police(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("police", lat, lng, radius)
+    async def get_nearby_police(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("police", lat, lng, radius, _tracker)
 
-    async def get_nearby_firestations(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("firestations", lat, lng, radius)
+    async def get_nearby_firestations(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("firestations", lat, lng, radius, _tracker)
 
-    async def get_nearby_pharmacies(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS) -> list[dict[str, Any]]:
-        return await self._fetch("pharmacies", lat, lng, radius)
+    async def get_nearby_pharmacies(self, lat: float, lng: float, radius: int = DEFAULT_RADIUS, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        return await self._fetch("pharmacies", lat, lng, radius, _tracker)
 
-    async def _fetch(self, category: str, lat: float, lng: float, radius: int) -> list[dict[str, Any]]:
+    async def _fetch(self, category: str, lat: float, lng: float, radius: int, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
         key = _cache_key(lat, lng, radius, category)
         now = time.time()
 
@@ -77,7 +78,7 @@ class LocationService:
 
         q = self._overpass.build_query(tags, lat, lng, radius)
         try:
-            raw = await self._overpass.query(q)
+            raw = await self._overpass.query(q, _tracker=_tracker)
         except OverpassError:
             return []
 
