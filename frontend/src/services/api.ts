@@ -79,6 +79,13 @@ export const locationApi = {
     api.get('/location/safe-destination', { params: { lat, lng, radius: radius ?? 10_000 } }),
 };
 
+export const userApi = {
+  updateLocation: (data: { latitude: number; longitude: number; accuracy?: number }) =>
+    api.post('/users/location', data),
+  getNearbyUsers: (lat: number, lng: number, radiusKm?: number) =>
+    api.get('/users/nearby', { params: { lat, lng, radius_km: radiusKm ?? 10 } }),
+};
+
 export const aiApi = {
   recommend: (data: { question: string; lat?: number; lng?: number }) =>
     api.post('/ai/recommendation', data),

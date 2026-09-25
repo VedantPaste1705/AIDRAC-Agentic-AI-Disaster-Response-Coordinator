@@ -190,3 +190,18 @@ export interface RiskAssessmentResponse {
   regional_alert_count: number;
   components: RiskComponentBreakdown;
 }
+
+export interface NearbyUser {
+  user_id: number;
+  full_name: string;
+  latitude: number;
+  longitude: number;
+  distance_km: number;
+  last_seen: string;
+  status: string;
+}
+
+export interface NearbyUsersResponse {
+  users: NearbyUser[];
+  count: number;
+}
