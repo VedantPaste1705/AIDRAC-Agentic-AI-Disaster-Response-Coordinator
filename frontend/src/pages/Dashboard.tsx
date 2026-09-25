@@ -8,6 +8,7 @@ import Badge from '../components/ui/Badge';
 import Card from '../components/ui/Card';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import AIAssistant, { AIAssistantWithRef } from '../components/AIAssistant';
+import ResponderSOSPanel from '../components/ResponderSOSPanel';
 import { useApi } from '../hooks/useApi';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useWeather } from '../hooks/useWeather';
@@ -17,6 +18,7 @@ import { sortByDistance, findNearest } from '../utils/haversine';
 import { alertApi, shelterApi, hospitalApi, disasterApi, locationApi, riskApi, sosApi } from '../services/api';
 import type { Alert, Shelter, Hospital, Disaster, NearbyResponse, RiskAssessmentResponse, GeoPosition, SOSIncident, SOSNearbyResponse, SOSStatus } from '../types';
 import MaterialIcon from '../components/ui/MaterialIcon';
+import { showBrowserNotification, playAlertSound } from '../utils/notifications';
 
 const SEVERITY_RANK: Record<string, number> = {
   critical: 0, severe: 1, high: 2, warning: 3, moderate: 4, advisory: 5, info: 6,
@@ -72,6 +74,9 @@ export default function Dashboard() {
       const data = response.data as { sos: SOSIncident | null; is_responder: boolean; responder_sos: SOSIncident | null };
       setActiveSOS(data.sos);
       setIsResponder(data.is_responder);
+      if (data.is_responder && data.responder_sos) {
+        setShowResponderPanel(true);
+      }
     } catch (err) {
       console.error('Failed to accept SOS:', err);
     }
@@ -130,6 +135,9 @@ export default function Dashboard() {
   // Active SOS for current user (victim or responder)
   const [activeSOS, setActiveSOS] = useState<SOSIncident | null>(null);
   const [isResponder, setIsResponder] = useState(false);
+  const [showResponderPanel, setShowResponderPanel] = useState(false);
+  const [lastNotifiedSOS, setLastNotifiedSOS] = useState<number | null>(null);
+  const [lastNotifiedAlert, setLastNotifiedAlert] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchActiveSOS = async () => {
@@ -138,6 +146,9 @@ export default function Dashboard() {
         const data = response.data as { sos: SOSIncident | null; is_responder: boolean; responder_sos: SOSIncident | null };
         setActiveSOS(data.sos);
         setIsResponder(data.is_responder);
+        if (data.is_responder && data.responder_sos && !showResponderPanel) {
+          setShowResponderPanel(true);
+        }
       } catch {
         // Ignore errors
       }
@@ -146,7 +157,39 @@ export default function Dashboard() {
     fetchActiveSOS();
     const interval = setInterval(fetchActiveSOS, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [showResponderPanel]);
+
+  // Notification wiring for nearby SOS and alerts
+  useEffect(() => {
+    if (!settings.notifications_enabled || !settings.push_notifications || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    // Notify about nearby SOS
+    if (nearbySOS.length > 0) {
+      const nearestSOS = nearbySOS[0];
+      if (nearestSOS.sos_id !== lastNotifiedSOS) {
+        showBrowserNotification(
+          '🚨 Emergency Nearby',
+          `${nearestSOS.victim_name} needs assistance ~${nearestSOS.distance_km.toFixed(1)} km away`
+        );
+        playAlertSound();
+        setLastNotifiedSOS(nearestSOS.sos_id);
+      }
+    }
+
+    // Notify about critical alerts in area
+    if (sortedAlerts.length > 0) {
+      const criticalAlert = sortedAlerts.find(a => a.severity === 'critical' || a.severity === 'severe');
+      if (criticalAlert && criticalAlert.id !== lastNotifiedAlert) {
+        showBrowserNotification(
+          '⚠️ Critical Alert',
+          `${criticalAlert.title}: ${criticalAlert.message.slice(0, 100)}...`
+        );
+        playAlertSound();
+        setLastNotifiedAlert(criticalAlert.id);
+      }
+    }
+  }, [nearbySOS, sortedAlerts, settings.notifications_enabled, settings.push_notifications, lastNotifiedSOS, lastNotifiedAlert]);
 
   const sortedAlerts = useMemo(() => {
     if (!alerts) return [];
@@ -340,98 +383,19 @@ export default function Dashboard() {
       )}
 
       {/* ===== SOS: Active Responder Section ===== */}
-      {isResponder && activeSOS && (
-        <Card variant="glass" padding="lg" className="border-primary-500/30 bg-primary-500/5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary-500/20 border border-primary-500/30">
-                <ShieldIcon className="h-5 w-5 text-primary-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">ACTIVE SOS RESPONSE</h3>
-                <p className="text-sm text-slate-400">You are assigned as a community responder</p>
-              </div>
-            </div>
-            <Badge variant="info" size="md">RESPONDER</Badge>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1">Victim</p>
-              <p className="text-white font-medium">{activeSOS.reporting_user_name || `User #${activeSOS.reporting_user_id}`}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1">Status</p>
-              <p className="text-white font-medium capitalize">{activeSOS.status.replace(/_/g, ' ')}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1">Location</p>
-              <p className="text-white font-mono text-sm">{activeSOS.latitude.toFixed(4)}, {activeSOS.longitude.toFixed(4)}</p>
-              {activeSOS.location_accuracy && (
-                <p className="text-xs text-slate-400">Accuracy: ±{Math.round(activeSOS.location_accuracy)}m</p>
-              )}
-            </div>
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1">Reported</p>
-              <p className="text-white font-mono text-sm">{new Date(activeSOS.created_at).toLocaleString()}</p>
-            </div>
-          </div>
-
-          {activeSOS.emergency_type && (
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 mb-4">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1">Emergency Type</p>
-              <p className="text-white font-medium">{activeSOS.emergency_type}</p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {/* Response Status Buttons */}
-            {activeSOS.status === 'responder_accepted' && (
-              <button
-                onClick={() => updateSOSStatus(activeSOS.id, 'assistance_in_progress')}
-                className="w-full py-3 rounded-lg bg-primary-600 text-white font-medium hover:bg-primary-500 transition-colors"
-              >
-                <Navigation className="h-4 w-4 inline-block mr-2" />
-                MARK ON THE WAY
-              </button>
-            )}
-            {activeSOS.status === 'assistance_in_progress' && (
-              <button
-                onClick={() => updateSOSStatus(activeSOS.id, 'assistance_provided')}
-                className="w-full py-3 rounded-lg bg-success-600 text-white font-medium hover:bg-success-500 transition-colors"
-              >
-                <UserCheck className="h-4 w-4 inline-block mr-2" />
-                MARK ASSISTANCE PROVIDED
-              </button>
-            )}
-            {activeSOS.status === 'assistance_provided' && (
-              <div className="p-3 rounded-lg bg-warning-500/10 border border-warning-500/30 text-warning-400 text-sm">
-                <p className="font-medium mb-2">Assistance marked as provided. Waiting for victim confirmation.</p>
-                <p className="text-xs">The victim will be asked to confirm they are safe.</p>
-              </div>
-            )}
-            {(activeSOS.status === 'user_confirmed_safe' || activeSOS.status === 'resolved') && (
-              <div className="p-3 rounded-lg bg-success-500/10 border border-success-500/30 text-success-400 text-center">
-                <Check className="h-5 w-5 inline-block mr-2" />
-                <span className="font-medium">SOS Resolved - Victim confirmed safe</span>
-              </div>
-            )}
-          </div>
-
-          {/* Navigation to victim */}
-          {position && activeSOS.status !== 'resolved' && activeSOS.status !== 'cancelled' && (
-            <div className="mt-4 pt-4 border-t border-slate-700/30">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-2">Navigation</p>
-              <button
-                onClick={() => navigateToVictim(activeSOS)}
-                className="w-full py-3 rounded-lg bg-slate-700/50 border border-slate-600 text-white font-medium hover:bg-slate-600/50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Navigation className="h-4 w-4" />
-                Navigate to Victim
-              </button>
-            </div>
-          )}
-        </Card>
+      {isResponder && activeSOS && showResponderPanel && (
+        <ResponderSOSPanel
+          sos={activeSOS}
+          onClose={() => setShowResponderPanel(false)}
+          onStatusUpdate={async (status) => {
+            await updateSOSStatus(activeSOS.id, status);
+            if (['user_confirmed_safe', 'resolved', 'cancelled'].includes(status)) {
+              setShowResponderPanel(false);
+              setIsResponder(false);
+              setActiveSOS(null);
+            }
+          }}
+        />
       )}
 
       {/* ===== 2. Summary Row ===== */}

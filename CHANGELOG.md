@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-09 — Admin Dashboard & SOS Emergency Response System
+
+- **Admin Dashboard** (`/admin`) with comprehensive emergency coordination interface:
+  - Overview statistics cards: active alerts, active SOS, people in affected zones, people marked safe, people requiring help, available responders, active response tasks
+  - Live disaster map reusing MapPage components (alerts, SOS, responders, users, disasters)
+  - SOS management grouped by status: NEW, ACKNOWLEDGED, ASSIGNED, RESPONDING, RESOLVED
+  - Admin SOS actions: acknowledge, assign responder, update status
+  - Nearby responders list with assignment capability (online users with location sharing)
+  - Affected zone statistics: total people, requiring help, active SOS, helped, marked safe, active responders
+  - Active government alerts overview with multi-location rendering
+  - Incident history with filtering by status, date, location
+- **SOS Emergency Response System** (`/api/sos`):
+  - Complete lifecycle: CREATE → ACCEPT → RESPOND → RESOLVE
+  - 11 status states: ACTIVE, RECEIVED, ACKNOWLEDGED, AWAITING_RESPONDER, RESPONDER_ASSIGNED, RESPONDER_ACCEPTED, ASSISTANCE_IN_PROGRESS, ASSISTANCE_PROVIDED, USER_CONFIRMED_SAFE, CANCELLED, RESOLVED
+  - Responder types: COMMUNITY (citizen) and OFFICIAL (admin-assigned)
+  - Nearby SOS detection on Dashboard with "ACCEPT TO HELP" button
+  - Responder acceptance flow with automatic status transitions
+  - Navigation to victim via MapPage with routing
+  - Victim safety confirmation → auto-resolve
+  - **Secret Responder Tab**: Only visible when user has accepted SOS or admin assigned them; shows victim info, location, navigation, status progression; auto-closes on resolution
+  - Admin oversight: full CRUD, status override, responder assignment, incident history
+- **Notification System Wiring**:
+  - Browser notifications via `showBrowserNotification()` now triggered by nearby SOS and critical alerts
+  - Alert sounds via `playAlertSound()` (Web Audio API)
+  - Deduplication prevents spam (tracks last notified SOS/alert ID)
+  - Respects user settings: notifications_enabled, push_notifications, sound_alerts
+- **Admin Authentication**:
+  - Reuses existing JWT + role-based access (`UserRole.ADMIN`)
+  - `require_admin` dependency for all admin endpoints
+  - Development seed script: `admin@aidrac.local` / `AIDRAC-Admin@2026!`
+- **Admin API** (`/api/admin`):
+  - `/overview` — summary statistics
+  - `/alerts` — active government alerts
+  - `/sos` — SOS incidents with status filter
+  - `/responders` — nearby available responders
+  - `/users` — all users with location
+  - `/incidents` — SOS history with filters
+  - `/zone-stats` — affected zone statistics
+  - `/sos/{id}/acknowledge`, `/assign`, `/status` — admin actions
+
 ## 2026-09 — Nearby Users / Shared Location
 
 - Added GPS location sharing for authenticated users via `POST /api/users/location`

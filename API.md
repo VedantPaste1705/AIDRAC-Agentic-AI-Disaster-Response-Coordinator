@@ -621,3 +621,307 @@ Get an AI-powered disaster recommendation. Routes through a LangGraph multi-agen
   ]
 }
 ```
+
+---
+
+## Admin Dashboard
+
+All admin endpoints require administrator authentication (`role: admin`).
+
+### GET /api/admin/overview
+
+Get summary statistics for the admin dashboard.
+
+**Authentication:** Required (admin)
+
+**Response:**
+```json
+{
+  "active_alerts": 5,
+  "active_sos": 3,
+  "people_in_affected_zones": 42,
+  "people_marked_safe": 12,
+  "people_requiring_help": 2,
+  "available_responders": 8,
+  "active_response_tasks": 3
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `active_alerts` | int | Number of active government CAP alerts |
+| `active_sos` | int | Number of active SOS incidents (all non-resolved statuses) |
+| `people_in_affected_zones` | int | Users with recent location in alert areas (24h) |
+| `people_marked_safe` | int | Resolved SOS where victim confirmed safe |
+| `people_requiring_help` | int | Active SOS without assigned responder |
+| `available_responders` | int | Online users with location sharing enabled |
+| `active_response_tasks` | int | SOS with responder en route or helping |
+
+### GET /api/admin/alerts
+
+List all active government alerts with full location data.
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `active_only` | bool | No | true | Filter to active alerts only |
+| `limit` | int | No | 100 | Maximum results (1-500) |
+| `offset` | int | No | 0 | Pagination offset |
+
+**Response:** Array of alert objects with `locations` array for multi-district alerts.
+
+### GET /api/admin/sos
+
+List SOS incidents with optional status filter.
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `status_filter` | string | No | — | Filter by SOS status (e.g., "active", "responder_accepted") |
+| `limit` | int | No | 100 | Maximum results (1-500) |
+| `offset` | int | No | 0 | Pagination offset |
+
+**Response:** Array of SOS incidents with victim/responder names.
+
+### GET /api/admin/responders
+
+List nearby available responders (online users with location sharing).
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `active_only` | bool | No | true | Only online users with recent location |
+| `limit` | int | No | 100 | Maximum results (1-500) |
+| `offset` | int | No | 0 | Pagination offset |
+
+**Response:** Array of users with location and active SOS info.
+
+### GET /api/admin/users
+
+List all users with location data.
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | int | No | 100 | Maximum results (1-500) |
+| `offset` | int | No | 0 | Pagination offset |
+
+### GET /api/admin/incidents
+
+SOS incident history with filtering.
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `status_filter` | string | No | — | Filter by SOS status |
+| `date_from` | datetime | No | — | Filter from date (ISO 8601) |
+| `date_to` | datetime | No | — | Filter to date (ISO 8601) |
+| `limit` | int | No | 100 | Maximum results (1-500) |
+| `offset` | int | No | 0 | Pagination offset |
+
+### GET /api/admin/zone-stats
+
+Statistics for a specific disaster/alert affected zone.
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `disaster_id` | int | No | — | Disaster ID for zone center |
+| `alert_id` | int | No | — | Alert ID for zone center |
+
+**Response:**
+```json
+{
+  "total_people_detected": 42,
+  "people_requiring_help": 2,
+  "active_sos": 3,
+  "people_helped": 5,
+  "people_marked_safe": 12,
+  "responders_active": 8
+}
+```
+
+### POST /api/admin/sos/{sos_id}/acknowledge
+
+Acknowledge an SOS incident (admin action).
+
+**Authentication:** Required (admin)
+
+**Response:** `{ "success": true, "sos_id": 1, "status": "acknowledged" }`
+
+### POST /api/admin/sos/{sos_id}/assign
+
+Assign a responder to an SOS incident.
+
+**Authentication:** Required (admin)
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `responder_id` | int | Yes | User ID of responder to assign |
+
+**Response:** `{ "success": true, "sos_id": 1, "responder_id": 5, "status": "responder_assigned" }`
+
+### POST /api/admin/sos/{sos_id}/status
+
+Admin override SOS status.
+
+**Authentication:** Required (admin)
+
+**Request Body:**
+```json
+{
+  "status": "responder_assigned"
+}
+```
+
+**Response:** `{ "success": true, "sos_id": 1, "status": "responder_assigned" }`
+
+---
+
+## SOS
+
+### POST /api/sos
+
+Create a new SOS incident.
+
+**Authentication:** Required (user)
+
+**Request Body:**
+```json
+{
+  "latitude": 28.6139,
+  "longitude": 77.2090,
+  "accuracy": 10.5,
+  "timestamp": 1699999999000,
+  "emergency_type": "medical",
+  "emergency_details": "Heart attack symptoms"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `latitude` | float | Yes | Latitude (-90 to 90) |
+| `longitude` | float | Yes | Longitude (-180 to 180) |
+| `accuracy` | float | No | GPS accuracy in meters |
+| `timestamp` | int | No | Client timestamp (milliseconds) |
+| `emergency_type` | string | No | Type of emergency |
+| `emergency_details` | string | No | Additional details |
+
+**Response (201):** SOS incident object with `id`, `status: "active"`, timestamps.
+
+### GET /api/sos/active
+
+Get the current user's active SOS (as victim or responder).
+
+**Authentication:** Required (user)
+
+**Response:**
+```json
+{
+  "sos": { ... SOS incident or null ... },
+  "is_responder": false,
+  "responder_sos": { ... SOS incident or null ... }
+}
+```
+
+### GET /api/sos/nearby
+
+Get nearby active SOS incidents within radius.
+
+**Authentication:** Required (user)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `lat` | float | Yes | — | Latitude |
+| `lng` | float | Yes | — | Longitude |
+| `radius_km` | float | No | 10 | Search radius (0.1-50 km) |
+
+**Response:** Array of nearby SOS with victim name, distance, emergency type.
+
+### GET /api/sos/{sos_id}
+
+Get SOS incident details (victim, responder, or admin only).
+
+**Authentication:** Required (user)
+
+**Response:** Full SOS incident with victim/responder names.
+
+### POST /api/sos/{sos_id}/cancel
+
+Cancel own SOS (victim only).
+
+**Authentication:** Required (user - must be victim)
+
+### POST /api/sos/{sos_id}/accept
+
+Accept nearby SOS as responder.
+
+**Authentication:** Required (user - must not be victim)
+
+**Response:** Updated SOS with `assigned_responder_id`, `status: "responder_accepted"`, `accepted_at`.
+
+### POST /api/sos/{sos_id}/status
+
+Update SOS status (victim, responder, or admin).
+
+**Authentication:** Required (user)
+
+**Request Body:**
+```json
+{
+  "status": "assistance_in_progress"
+}
+```
+
+**Valid Transitions:**
+- Victim: `active` → `cancelled`, `assistance_provided` → `user_confirmed_safe` → `resolved`
+- Responder: `responder_accepted` → `assistance_in_progress` → `assistance_provided`
+- Admin: Any status to any status
+
+### POST /api/sos/{sos_id}/confirm-safe
+
+Victim confirms they are safe (resolves SOS).
+
+**Authentication:** Required (user - must be victim)
+
+### GET /api/sos/my/history
+
+Get current user's SOS history.
+
+**Authentication:** Required (user)
+
+**Query Parameters:** `limit` (default 50), `offset` (default 0)
+
+### Admin SOS Endpoints
+
+#### GET /api/sos/admin/active
+
+Get all active SOS incidents (admin only).
+
+#### GET /api/sos/admin/history
+
+Get resolved SOS incident history (admin only).
+
+**Query Parameters:** `limit` (default 50), `offset` (default 0)
+
+#### POST /api/sos/admin/{sos_id}/responder
+
+Admin assign/remove responder.
+
+**Query Parameters:** `responder_id` (optional - omit to unassign)
+
+**Response:** Updated SOS with responder assignment.
