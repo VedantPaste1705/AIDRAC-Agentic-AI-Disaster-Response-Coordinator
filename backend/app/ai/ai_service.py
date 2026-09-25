@@ -1,11 +1,12 @@
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 from google import genai
 from google.genai import types as genai_types
 
 from app.ai.prompts import SYSTEM_PROMPT
 from app.ai.schemas import AIRecommendationResponse, RecommendedDestination
+from app.utils.latency import LatencyTracker
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class AIService:
         self,
         question: str,
         context: str,
+        _tracker: Optional[LatencyTracker] = None,
     ) -> AIRecommendationResponse:
         if not self._client:
             print("[AIService] GEMINI_API_KEY is not set — returning degraded response")
@@ -61,7 +63,11 @@ Do not include explanations outside the JSON.
 """
 
         try:
+            if _tracker:
+                _tracker.start("gemini_call")
             response = await self._call_gemini(full_prompt)
+            if _tracker:
+                _tracker.end("gemini_call")
             return self._parse_response(response)
         except Exception as exc:
             reason = self._classify_error(exc)

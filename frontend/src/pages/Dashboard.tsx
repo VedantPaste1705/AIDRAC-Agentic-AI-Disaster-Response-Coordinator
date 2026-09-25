@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import {
   Home, Hospital as HospitalIcon, Shield, MapPin,
   Flame, Phone, Copy, Check,
@@ -7,7 +7,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import Badge from '../components/ui/Badge';
 import Card from '../components/ui/Card';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import AIAssistant from '../components/AIAssistant';
+import AIAssistant, { AIAssistantWithRef } from '../components/AIAssistant';
 import { useApi } from '../hooks/useApi';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useWeather } from '../hooks/useWeather';
@@ -45,8 +45,12 @@ function formatDistance(d: number): string {
 
 export default function Dashboard() {
   const { settings } = useSettings();
-  const [aiQuestion, setAiQuestion] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const aiAssistantRef = useRef<{ submitQuestion: (question: string) => void }>(null);
+
+  const handleQuickAction = (question: string) => {
+    aiAssistantRef.current?.submitQuestion(question);
+  };
 
   const geolocation = useGeolocation({ watch: false });
   const { weather, loading: weatherLoading, error: weatherError } = useWeather(geolocation.position);
@@ -361,7 +365,7 @@ export default function Dashboard() {
           {QUICK_ACTIONS.map((action) => (
             <button
               key={action.label}
-              onClick={() => setAiQuestion(action.question)}
+              onClick={() => handleQuickAction(action.question)}
               className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:bg-primary-500/10 hover:border-primary-500/25 text-slate-300 hover:text-white transition-all text-sm cursor-pointer text-left"
             >
               <MaterialIcon icon={action.icon} className="text-xl shrink-0 text-primary-400" />
@@ -370,7 +374,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <AIAssistant initialQuestion={aiQuestion} />
+        <AIAssistantWithRef ref={aiAssistantRef} />
       </Card>
 
       {/* ===== 4. Emergency Contacts ===== */}

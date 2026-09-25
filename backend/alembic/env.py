@@ -1,4 +1,6 @@
 import asyncio
+import sys
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -6,12 +8,19 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
+# Add the backend directory to the path so we can import app.config.settings
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 from app.database.connection import Base
 from app.models import *  # noqa: F401, F403
+from app.config.settings import settings
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url with the application's DATABASE_URL from settings
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 target_metadata = Base.metadata
 

@@ -1,6 +1,7 @@
 import httpx
-from typing import Any
+from typing import Any, Optional
 from app.config.settings import settings
+from app.utils.latency import LatencyTracker
 
 TIMEOUT = 15
 
@@ -11,7 +12,10 @@ FALLBACK_URLS = [
 
 
 class OverpassService:
-    async def query(self, overpass_ql: str) -> list[dict[str, Any]]:
+    async def query(self, overpass_ql: str, _tracker: Optional[LatencyTracker] = None) -> list[dict[str, Any]]:
+        if _tracker:
+            _tracker.start("overpass_query")
+        
         urls = [settings.OVERPASS_API_URL] + FALLBACK_URLS
         seen = set()
         seen_urls = []
@@ -29,7 +33,10 @@ class OverpassService:
                     data = resp.json()
                 print(f"[overpass] OK: {url}")
                 elements = data.get("elements", [])
-                return self._parse_elements(elements)
+                result = self._parse_elements(elements)
+                if _tracker:
+                    _tracker.end("overpass_query")
+                return result
             except httpx.TimeoutException:
                 print(f"[overpass] timeout: {url}")
                 last_error = OverpassError("Overpass API timed out")
@@ -40,6 +47,8 @@ class OverpassService:
                 print(f"[overpass] error: {url} - {e}")
                 last_error = OverpassError(f"Overpass request failed: {str(e)}")
 
+        if _tracker:
+            _tracker.end("overpass_query", {"error": str(last_error)})
         raise last_error  # type: ignore[misc]
 
     def _parse_elements(self, elements: list[dict[str, Any]]) -> list[dict[str, Any]]:

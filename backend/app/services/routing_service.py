@@ -1,7 +1,8 @@
 import httpx
-from typing import Any
+from typing import Any, Optional
 from app.langgraph.models import RouteState
 from app.services.location_service import _haversine
+from app.utils.latency import LatencyTracker
 
 OSRM_BASE = "https://router.project-osrm.org"
 TIMEOUT = 10
@@ -15,20 +16,37 @@ class RoutingService:
         dest_lat: float,
         dest_lng: float,
         destination_type: str = "destination",
+        _tracker: Optional[LatencyTracker] = None,
     ) -> RouteState:
+        if _tracker:
+            _tracker.start("routing_get_route")
+        
         try:
             print("[Routing] Calling OSRM")
+            if _tracker:
+                _tracker.start("routing_osrm_call")
             result = await self._osrm_route(origin_lat, origin_lng, dest_lat, dest_lng)
+            if _tracker:
+                _tracker.end("routing_osrm_call")
             print(f"[Routing] Provider: OSRM")
+            if _tracker:
+                _tracker.end("routing_get_route")
             return result
         except Exception as exc:
             print(f"[Routing] OSRM unavailable: {exc}")
             print("[Routing] Falling back to straight-line")
-            return self._straight_line_route(
+            if _tracker:
+                _tracker.start("routing_straight_line_fallback")
+            result = self._straight_line_route(
                 origin_lat, origin_lng,
                 dest_lat, dest_lng,
                 destination_type,
             )
+            if _tracker:
+                _tracker.end("routing_straight_line_fallback")
+            if _tracker:
+                _tracker.end("routing_get_route")
+            return result
 
     async def _osrm_route(
         self,

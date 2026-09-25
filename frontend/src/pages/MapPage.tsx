@@ -2,17 +2,20 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Navigation, Pill, TriangleAlert } from 'lucide-react';
+import { Navigation, Pill, TriangleAlert, Users } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useGeolocation } from '../hooks/useGeolocation';
+import { useUserLocation } from '../hooks/useUserLocation';
+import { useNearbyUsers } from '../hooks/useNearbyUsers';
 import { useSettings } from '../context/SettingsContext';
-import { shelterApi, hospitalApi, disasterApi, alertApi, locationApi } from '../services/api';
+import { shelterApi, hospitalApi, disasterApi, alertApi, locationApi, userApi } from '../services/api';
 import { findNearest, haversineDistance } from '../utils/haversine';
 import { getRoute } from '../utils/routing';
 import { getCategory } from '../utils/destination';
 import type {
   Shelter, Hospital, Disaster, Alert, RouteInfo, NearestItem, GeoPosition,
   NearbyPlace, NearbyResponse, EmergencyDestinationType,
+  NearbyUser, NearbyUsersResponse,
 } from '../types';
 import { DESTINATION_LABELS } from '../types';
 import MaterialIcon from '../components/ui/MaterialIcon';
@@ -74,6 +77,13 @@ const pharmacyIcon = L.divIcon({
   html: '<div style="background:#059669;color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:14px;">💊</div>',
   iconSize: [28, 28],
   iconAnchor: [14, 14],
+});
+
+const otherUserIcon = L.divIcon({
+  className: 'custom-marker',
+  html: '<div style="background:#7c3aed;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:16px;">👤</div>',
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
 });
 
 const disasterIcon = L.divIcon({
@@ -276,6 +286,14 @@ export default function MapPage() {
   const tileUrl = TILE_URLS[mapType] || TILE_URLS.standard;
   const tileAttr = TILE_ATTR[mapType] || TILE_ATTR.standard;
   const radiusMeters = settings.emergency_radius * 1000;
+
+  // Nearby users
+  const { sendLocation } = useUserLocation(position, { enabled: hasGps, updateIntervalMs: 30000 });
+  const { users: nearbyUsers, count: nearbyUsersCount, loading: nearbyUsersLoading } = useNearbyUsers(position, {
+    enabled: hasGps,
+    refreshIntervalMs: 30000,
+    radiusKm: settings.emergency_radius,
+  });
 
   const { data: dbShelters, loading: dbSheltersLoading } = useApi<Shelter[]>(() => shelterApi.getAll());
   const { data: dbHospitals, loading: dbHospitalsLoading } = useApi<Hospital[]>(() => hospitalApi.getAll());
@@ -505,6 +523,19 @@ export default function MapPage() {
           <Marker position={posTuple} icon={userIcon}>
             <Popup><div className="text-sm font-medium">You are here</div></Popup>
           </Marker>
+
+          {nearbyUsers.length > 0 &&
+            nearbyUsers.map((user) => (
+              <Marker key={`user-${user.user_id}`} position={[user.latitude, user.longitude]} icon={otherUserIcon}>
+                <Popup>
+                  <div className="text-sm">
+                    <p className="font-medium text-primary-700">{user.full_name}</p>
+                    <p className="text-xs text-on-surface-variant">{user.distance_km.toFixed(2)} km away</p>
+                    <p className="text-xs text-slate-500">Last seen: {new Date(user.last_seen).toLocaleTimeString()}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
 
           {destination && (
             <Marker
@@ -781,6 +812,7 @@ export default function MapPage() {
         <div className="absolute bottom-3 left-3 z-20 p-2 rounded-lg bg-slate-900/85 backdrop-blur-md border border-slate-700/40 shadow-lg">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono tracking-widest uppercase text-slate-400">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary-600 inline-block shadow-[0_0_6px_rgba(37,99,235,0.6)] border border-white shrink-0" /> You</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500 inline-block shadow-[0_0_6px_rgba(124,58,237,0.6)] shrink-0" /> Other User</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-secondary-500 inline-block shadow-[0_0_6px_rgba(249,115,22,0.6)] shrink-0" /> Shelter</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-danger-500 inline-block shadow-[0_0_6px_rgba(220,38,38,0.6)] shrink-0" /> Hospital</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block shadow-[0_0_6px_rgba(59,130,246,0.6)] shrink-0" /> Police</span>
@@ -795,6 +827,21 @@ export default function MapPage() {
             <span className="flex items-center gap-1"><TriangleAlert className="text-red-400" size={12} /> Gov Alert</span>
           </div>
         </div>
+
+        {/* Nearby Users Count Overlay (top-right inside map) */}
+        {nearbyUsersCount > 0 && (
+          <div className="absolute top-3 right-3 z-20">
+            <Card variant="glass" padding="sm" className="min-w-[140px]">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-purple-400" />
+                <div>
+                  <p className="text-xs font-mono text-slate-500 uppercase tracking-wider">Nearby Users</p>
+                  <p className="text-lg font-bold font-mono text-white">{nearbyUsersCount}</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
 
         {/* Route toggle overlay (top-left inside map) */}
         {destination && (

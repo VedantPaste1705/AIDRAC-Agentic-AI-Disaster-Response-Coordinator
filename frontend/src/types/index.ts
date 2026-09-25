@@ -163,6 +163,16 @@ export interface AIRecommendationResponse {
   actions: string[];
 }
 
+export interface AIMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  response?: AIRecommendationResponse;
+  error?: string;
+  loading?: boolean;
+}
+
 export interface RiskComponentBreakdown {
   weather_score: number;
   alert_score: number;
@@ -179,4 +189,19 @@ export interface RiskAssessmentResponse {
   nearby_alerts: number;
   regional_alert_count: number;
   components: RiskComponentBreakdown;
+}
+
+export interface NearbyUser {
+  user_id: number;
+  full_name: string;
+  latitude: number;
+  longitude: number;
+  distance_km: number;
+  last_seen: string;
+  status: string;
+}
+
+export interface NearbyUsersResponse {
+  users: NearbyUser[];
+  count: number;
 }
