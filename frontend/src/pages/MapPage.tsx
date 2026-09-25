@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -178,9 +178,18 @@ function severityColor(severity: string): string {
 
 function FlyTo({ center, zoom }: { center: [number, number]; zoom?: number }) {
   const map = useMap();
+  const lastCenter = useRef<[number, number] | null>(null);
   useEffect(() => {
+    // Only fly if the position changed by more than ~50 meters to prevent
+    // constant re-centering from GPS micro-fluctuations
+    if (lastCenter.current) {
+      const dlat = Math.abs(center[0] - lastCenter.current[0]);
+      const dlng = Math.abs(center[1] - lastCenter.current[1]);
+      if (dlat < 0.0005 && dlng < 0.0005) return;
+    }
+    lastCenter.current = center;
     map.flyTo(center, zoom || map.getZoom(), { duration: 1 });
-  }, [center, zoom, map]);
+  }, [center[0], center[1], zoom, map]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 
@@ -299,8 +308,8 @@ export default function MapPage() {
   const { data: dbHospitals, loading: dbHospitalsLoading } = useApi<Hospital[]>(() => hospitalApi.getAll());
   const { data: disasters, loading: disastersLoading } = useApi<Disaster[]>(() => disasterApi.getAll());
   const { data: alertsData, loading: alertsLoading } = useApi<Alert[]>(
-    () => alertApi.getAll(position ? { lat: position.lat, lng: position.lng } : undefined),
-    [position?.lat, position?.lng]
+    () => alertApi.getAll({ all: true }),
+    []
   );
 
   const { data: nearby, loading: nearbyLoading, refetch: refetchNearby } = useApi<NearbyResponse>(
@@ -449,6 +458,16 @@ export default function MapPage() {
         const c = polygonCentroid(polys[0]);
         if (haversineDistance(position.lat, position.lng, c[0], c[1]) <= radiusKm) {
           points.push(c);
+        }
+      } else if (a.latitude != null && a.longitude != null) {
+        if (haversineDistance(position.lat, position.lng, a.latitude, a.longitude) <= radiusKm) {
+          points.push([a.latitude, a.longitude]);
+        }
+      } else if (a.locations && a.locations.length > 0) {
+        for (const loc of a.locations) {
+          if (haversineDistance(position.lat, position.lng, loc.latitude, loc.longitude) <= radiusKm) {
+            points.push([loc.latitude, loc.longitude]);
+          }
         }
       }
     }
@@ -662,39 +681,74 @@ export default function MapPage() {
           {showGovAlerts &&
             alerts.map((a) => {
               const polys = parseAlertPolygons(a.polygons);
-              if (polys.length === 0) return null;
-              const centroid = polygonCentroid(polys[0]);
               const severity = a.severity || 'info';
               const icon = govAlertIcon(severity);
+              const hasPolygons = polys.length > 0;
+
+              // Determine marker positions:
+              // 1. If polygon exists, use its centroid
+              // 2. Else if alert has resolved top-level coordinates, use those
+              // 3. Else if alert has resolved locations (from AlertLocation), use those
+              // 4. Else do not render a marker (don't fall back to user position)
+              const markerPositions: { pos: [number, number]; label?: string; src?: string }[] = [];
+              if (hasPolygons) {
+                markerPositions.push({ pos: polygonCentroid(polys[0]) });
+              } else if (a.latitude != null && a.longitude != null) {
+                markerPositions.push({ pos: [a.latitude, a.longitude], src: a.location_source ?? undefined });
+              } else if (a.locations && a.locations.length > 0) {
+                for (const loc of a.locations) {
+                  markerPositions.push({
+                    pos: [loc.latitude, loc.longitude],
+                    label: loc.name,
+                    src: loc.location_source,
+                  });
+                }
+              }
+
+              if (markerPositions.length === 0) {
+                // No positional data at all — skip rendering on map
+                return null;
+              }
+
+              const alertPopup = (locLabel?: string, locSrc?: string) => (
+                <Popup>
+                  <div className="text-sm max-w-64">
+                    <p className="font-medium text-base mb-1">{a.title}</p>
+                    {a.event && <p className="text-xs text-slate-400 mb-1">{a.event}</p>}
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider text-white"
+                        style={{ backgroundColor: alertSeverityColor(severity) }}
+                      >
+                        {severity}
+                      </span>
+                      <span className="text-[10px] font-mono uppercase text-slate-500">{sourceLabel(a.source)}</span>
+                    </div>
+                    {a.area && <p className="text-xs text-slate-400 mb-1">Area: {a.area}</p>}
+                    {locLabel && <p className="text-xs text-cyan-400 mb-1">📍 {locLabel}</p>}
+                    {!hasPolygons && locSrc && (
+                      <p className="text-xs text-emerald-400 mb-1 italic">Location resolved via {locSrc}</p>
+                    )}
+                    {a.expires_at && <p className="text-xs text-slate-500 mb-1">Expires: {formatExpiry(a.expires_at)}</p>}
+                    {a.message && <p className="text-xs text-slate-300 mt-1 leading-relaxed">{a.message}</p>}
+                  </div>
+                </Popup>
+              );
+
               return (
                 <div key={`gov-${a.id}`}>
-                  {polys.map((poly, idx) => (
+                  {hasPolygons && polys.map((poly, idx) => (
                     <Polygon
                       key={`p-${a.id}-${idx}`}
                       positions={poly}
                       pathOptions={alertPolygonStyle(severity)}
                     />
                   ))}
-                  <Marker position={centroid} icon={icon}>
-                    <Popup>
-                      <div className="text-sm max-w-64">
-                        <p className="font-medium text-base mb-1">{a.title}</p>
-                        {a.event && <p className="text-xs text-slate-400 mb-1">{a.event}</p>}
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider text-white"
-                            style={{ backgroundColor: alertSeverityColor(severity) }}
-                          >
-                            {severity}
-                          </span>
-                          <span className="text-[10px] font-mono uppercase text-slate-500">{sourceLabel(a.source)}</span>
-                        </div>
-                        {a.area && <p className="text-xs text-slate-400 mb-1">Area: {a.area}</p>}
-                        {a.expires_at && <p className="text-xs text-slate-500 mb-1">Expires: {formatExpiry(a.expires_at)}</p>}
-                        {a.message && <p className="text-xs text-slate-300 mt-1 leading-relaxed">{a.message}</p>}
-                      </div>
-                    </Popup>
-                  </Marker>
+                  {markerPositions.map((mp, mpIdx) => (
+                    <Marker key={`gm-${a.id}-${mpIdx}`} position={mp.pos} icon={icon}>
+                      {alertPopup(mp.label, mp.src)}
+                    </Marker>
+                  ))}
                 </div>
               );
             })}

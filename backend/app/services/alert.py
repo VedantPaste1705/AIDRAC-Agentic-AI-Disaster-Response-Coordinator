@@ -5,6 +5,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from app.models.alert import Alert
 from app.schemas.alert import AlertCreate
 from app.utils.latency import LatencyTracker
@@ -79,6 +80,7 @@ class AlertService:
         now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(Alert)
+            .options(selectinload(Alert.locations))
             .where(
                 Alert.is_active.is_(True),
                 or_(
@@ -101,6 +103,7 @@ class AlertService:
         now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(Alert)
+            .options(selectinload(Alert.locations))
             .where(
                 Alert.is_active.is_(True),
                 or_(
@@ -120,6 +123,7 @@ class AlertService:
     ) -> list[Alert]:
         result = await self.db.execute(
             select(Alert)
+            .options(selectinload(Alert.locations))
             .where(Alert.is_active.is_(False))
             .order_by(Alert.expired_at.desc())
             .offset(offset)
@@ -149,36 +153,42 @@ class AlertService:
 
             polygons_text = alert.polygons
 
-            if not polygons_text:
-                matched.append(alert)
-                continue
+            if polygons_text:
+                all_vertices: list[tuple[float, float]] = []
+                inside_polygon = False
 
-            all_vertices: list[tuple[float, float]] = []
-            inside_polygon = False
-
-            for poly_str in polygons_text.split(";"):
-                poly_str = poly_str.strip()
-                if not poly_str:
-                    continue
-                try:
-                    polygon = _parse_polygon(poly_str)
-                    if len(polygon) < 3:
+                for poly_str in polygons_text.split(";"):
+                    poly_str = poly_str.strip()
+                    if not poly_str:
                         continue
-                    all_vertices.extend(polygon)
-                    if _point_in_polygon(lat, lng, polygon):
-                        inside_polygon = True
-                        break
-                except (ValueError, IndexError):
+                    try:
+                        polygon = _parse_polygon(poly_str)
+                        if len(polygon) < 3:
+                            continue
+                        all_vertices.extend(polygon)
+                        if _point_in_polygon(lat, lng, polygon):
+                            inside_polygon = True
+                            break
+                    except (ValueError, IndexError):
+                        continue
+
+                if inside_polygon:
+                    matched.append(alert)
                     continue
 
-            if inside_polygon:
-                matched.append(alert)
-                continue
+                if all_vertices:
+                    centroid = _polygon_centroid(all_vertices)
+                    dist = _haversine(lat, lng, centroid[0], centroid[1])
+                    if dist <= SEARCH_RADIUS_KM:
+                        matched.append(alert)
+                    continue
 
-            if all_vertices:
-                centroid = _polygon_centroid(all_vertices)
-                dist = _haversine(lat, lng, centroid[0], centroid[1])
+            if alert.latitude is not None and alert.longitude is not None:
+                dist = _haversine(lat, lng, alert.latitude, alert.longitude)
                 if dist <= SEARCH_RADIUS_KM:
                     matched.append(alert)
+                continue
+
+            matched.append(alert)
 
         return matched
