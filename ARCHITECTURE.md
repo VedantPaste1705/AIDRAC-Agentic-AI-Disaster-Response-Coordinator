@@ -64,12 +64,16 @@ React Router v6 with the following structure:
 - **useGeolocation** — browser Geolocation API wrapper with watchPosition support; exposes position, error, loading, permissionDenied, unsupported, refresh
 - **useWeather** — weather data fetching with 5-minute auto-refresh interval
 
-### API Client
+### MapPage — Alert Rendering Logic
 
-Single Axios client at `services/api.ts` with:
-- JWT token injection via request interceptor (reads from localStorage)
-- 401 redirect to `/login` via response interceptor
-- Domain-specific export objects: `authApi`, `shelterApi`, `hospitalApi`, `disasterApi`, `alertApi`, `settingsApi`, `routeApi`, `weatherApi`, `locationApi`, `aiApi`, `routingApi` (note: `routingApi` is defined but unused; routing uses direct `fetch()` in `utils/routing.ts`)
+`pages/MapPage.tsx` renders government alerts with correct geographic positioning:
+
+- **Fetch**: Calls `GET /api/alerts?all=true` (bypasses 200km distance filter)
+- **Polygon alerts**: Renders polygon + centroid marker
+- **Resolved coordinates**: Renders marker at `alert.latitude`/`alert.longitude`
+- **Multi-location alerts**: Renders one marker per entry in `alert.locations[]` (like shelters/hospitals)
+- **No coordinates**: Skips map marker entirely — **never falls back to user GPS**
+- **Filter**: Respects `settings.min_alert_severity` and `settings.show_gov_alerts`
 
 ### Styling
 
@@ -115,12 +119,14 @@ Business logic is isolated in `app/services/`:
 - **overpass_service.py** — HTTP client with 3-server retry chain (configurable primary + 2 fallbacks)
 - **routing_service.py** — OSRM routing with Haversine straight-line fallback (used by LangGraph Route Agent)
 - **incident_service.py** — LangGraph checkpoint management via MemorySaver
+- **location_resolver.py** — **NEW**: Priority-based location resolution for CAP alerts (polygon → circle → point → local GeoNames DB → Nominatim); supports multi-location resolution; caches 556k+ Indian locations from GeoNames
 
 ### CAP Ingestion
 
 Located in `app/disaster_sources/`:
-- **CapProvider** — fetches RSS feeds, parses CAP XML 1.2, extracts alerts with polygon data
-- **BackgroundIngestion** — asyncio background task polling every 300 seconds
+- **CapProvider** — fetches RSS feeds, parses CAP XML 1.2, extracts alerts with polygon, circle, and point data
+- **LocationResolver** — resolves alert coordinates using priority: polygon centroid → circle center → point → local GeoNames DB (556k+ Indian locations) → Nominatim fallback; supports multi-location resolution for comma-separated area strings
+- **BackgroundIngestion** — asyncio background task polling every 300 seconds; uses LocationResolver for new alerts; **skips initial ingestion on startup** to preserve already-resolved coordinates
 - **CacheService** — in-memory TTL cache for RSS feeds and CAP XML files
 - Multi-source: IMD (primary) and NDMA (secondary, frequently rate-limited), merged by `external_id`
 
@@ -143,8 +149,10 @@ Located in `app/langgraph/`:
 - **shelters** — id, name, latitude, longitude, capacity, occupancy, phone, address
 - **hospitals** — id, name, latitude, longitude, emergency_available, phone, address
 - **disasters** — id, type, severity, latitude, longitude, description, status, created_at
-- **alerts** — id, title, message, disaster_id (FK), severity, created_at, external_id (unique), expires_at, event, urgency, certainty, area, is_active, expired_at, polygons, source
+- **alerts** — id, title, message, disaster_id (FK), severity, created_at, external_id (unique), expires_at, event, urgency, certainty, area, is_active, expired_at, polygons, source, **latitude, longitude, location_source**
 - **routes** — id, source_lat, source_lng, destination_lat, destination_lng, estimated_time, distance_km
+- **locations** — id, name, normalized_name, latitude, longitude, type, state, district, country, aliases (556k+ GeoNames entries for India)
+- **alert_locations** — id, alert_id (FK), name, latitude, longitude, location_source, location_type, state, district, resolved_order (multi-location support for alerts)
 
 ### ORM
 

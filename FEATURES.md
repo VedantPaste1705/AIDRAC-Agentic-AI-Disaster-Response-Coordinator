@@ -61,14 +61,20 @@
 | IMD CAP RSS ingestion | ✅ Implemented | |
 | NDMA CAP RSS ingestion | ✅ Implemented | Frequently rate-limited (302 redirects) |
 | CAP XML 1.2 parsing | ✅ Implemented | |
+| CAP `<circle>` / `<point>` parsing | ✅ Implemented | Added support for circle center and point coordinates |
 | Background polling (5 min) | ✅ Implemented | |
 | Multi-source deduplication | ✅ Implemented | via `external_id` |
 | Soft-delete for expired alerts | ✅ Implemented | |
 | 30-day retention cleanup | ✅ Implemented | |
 | In-memory caching | ✅ Implemented | 300-second TTL |
-| Location-aware filtering via polygons | ✅ Implemented | Backend `_filter_by_location` uses point-in-polygon geofencing + centroid radius |
+| **Priority-based location resolution** | ✅ Implemented | Polygon → Circle → Point → Local DB (556k GeoNames) → Nominatim fallback |
+| **Multi-location support** | ✅ Implemented | Alerts with multiple districts resolve each district separately |
+| **No user-GPS fallback** | ✅ Implemented | Alerts without coordinates render in list only, never on map |
+| Location-aware filtering via polygons | ✅ Implemented | Backend `_filter_by_location` uses point-in-polygon + centroid radius + lat/lng |
 | Alert centroids on map | ✅ Implemented | Centroid markers with severity icons and popups |
 | Alert polygon rendering | ✅ Implemented | Rendered on map with severity-colored fills |
+| **Multi-marker rendering** | ✅ Implemented | One marker per resolved district (like shelters/hospitals) |
+| **Background refresh resolves locations** | ✅ Implemented | Uses LocationResolver for new alerts; skips startup ingestion to preserve coordinates |
 
 ## Settings
 
