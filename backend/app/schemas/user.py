@@ -35,6 +35,7 @@ class UserLocationUpdate(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     accuracy: Optional[float] = Field(None, ge=0)
+    timestamp: Optional[int] = Field(None, ge=0)
 
 
 class NearbyUserResponse(BaseModel):

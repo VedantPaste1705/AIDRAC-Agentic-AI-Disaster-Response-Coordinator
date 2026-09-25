@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, DateTime, Float, func
+from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, DateTime, func, Float, BigInteger
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
 
@@ -27,7 +27,7 @@ class Alert(Base):
 
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    location_source = Column(String(30), nullable=True)
+    accuracy = Column(Float, nullable=True)
+    timestamp = Column(BigInteger, nullable=True)
 
     disaster = relationship("Disaster", backref="alerts")
-    locations = relationship("AlertLocation", back_populates="alert", cascade="all, delete-orphan", order_by="AlertLocation.resolved_order")

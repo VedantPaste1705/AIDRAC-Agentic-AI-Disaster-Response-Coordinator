@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum as SAEnum, Float, DateTime, Boolean, func
+from sqlalchemy import Column, Integer, String, Enum as SAEnum, Float, DateTime, Boolean, func, BigInteger
 from app.database.connection import Base
 import enum
 
@@ -20,5 +20,6 @@ class User(Base):
     last_longitude = Column(Float, nullable=True)
     location_accuracy = Column(Float, nullable=True)
     last_location_update = Column(DateTime(timezone=True), nullable=True)
+    location_timestamp = Column(BigInteger, nullable=True)
     location_visibility = Column(Boolean, default=True, nullable=False)
     is_online = Column(Boolean, default=False, nullable=False)

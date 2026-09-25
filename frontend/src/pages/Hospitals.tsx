@@ -4,7 +4,7 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { useApi } from '../hooks/useApi';
 import { useSettings } from '../context/SettingsContext';
 import { locationApi } from '../services/api';
-import type { NearbyResponse, NearbyPlace, EmergencyDestinationType } from '../types';
+import type { NearbyResponse, NearbyPlace, EmergencyDestinationType, GeoPosition } from '../types';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -12,10 +12,22 @@ import ErrorState from '../components/ErrorState';
 import EmptyState from '../components/EmptyState';
 import LocationStatus from '../components/LocationStatus';
 
+function isPositionFresh(position: GeoPosition | null, staleThresholdMs = 30000): boolean {
+  if (!position) return false;
+  return Date.now() - position.timestamp < staleThresholdMs;
+}
+
+function isPositionAccurate(position: GeoPosition | null, maxAccuracyMeters = 100): boolean {
+  if (!position) return false;
+  return position.accuracy <= maxAccuracyMeters;
+}
+
 export default function Hospitals() {
   const { settings } = useSettings();
   const geo = useGeolocation({ watch: false });
-  const position = geo.position;
+  const browserPosition = geo.position;
+  const hasFreshPosition = isPositionFresh(browserPosition) && isPositionAccurate(browserPosition);
+  const position = hasFreshPosition ? browserPosition : null;
   const navigate = useNavigate();
 
   const radiusMeters = settings.emergency_radius * 1000;
@@ -24,7 +36,7 @@ export default function Hospitals() {
     navigate('/map', {
       state: {
         emergencyRoute: true,
-        userPosition: position ?? undefined,
+        userPosition: position ?? browserPosition ?? undefined,
         destinationType: 'hospital' as EmergencyDestinationType,
         destinationItem: { item: place, distanceKm: place.distance },
       },
@@ -42,7 +54,7 @@ export default function Hospitals() {
         <h1 className="text-3xl font-bold font-display text-on-surface tracking-tight">Hospitals</h1>
         <p className="text-sm text-on-surface-variant mt-1 font-mono uppercase tracking-widest">Live data from OpenStreetMap</p>
       </div>
-      <LocationStatus geolocation={geo} />
+      <LocationStatus geolocation={geo} showDetails={true} />
     </div>
   );
 

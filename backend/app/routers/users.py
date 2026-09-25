@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database.connection import get_db
@@ -14,11 +14,13 @@ from app.models.user import User, UserRole
 from app.models.user_settings import UserSettings
 from datetime import datetime, timedelta, timezone
 import math
+import time
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
 STALE_THRESHOLD_MINUTES = 5
 DEFAULT_NEARBY_RADIUS_KM = 10
+MAX_LOCATION_AGE_SECONDS = 60
 
 
 def haversine_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -43,10 +45,25 @@ async def update_location(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    now = int(time.time() * 1000)
+    client_timestamp = data.timestamp or now
+    location_age_ms = now - client_timestamp
+
+    if location_age_ms > MAX_LOCATION_AGE_SECONDS * 1000:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Location timestamp too old: {location_age_ms}ms (max {MAX_LOCATION_AGE_SECONDS * 1000}ms)"
+        )
+
+    if current_user.location_timestamp is not None:
+        if client_timestamp <= current_user.location_timestamp:
+            return UserResponse.model_validate(current_user)
+
     current_user.last_latitude = data.latitude
     current_user.last_longitude = data.longitude
     if data.accuracy is not None:
         current_user.location_accuracy = data.accuracy
+    current_user.location_timestamp = client_timestamp
     current_user.last_location_update = datetime.now(timezone.utc)
     current_user.is_online = True
 
@@ -64,6 +81,7 @@ async def get_nearby_users(
     db: AsyncSession = Depends(get_db),
 ):
     stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=STALE_THRESHOLD_MINUTES)
+    stale_threshold_ts = int(time.time() * 1000) - (STALE_THRESHOLD_MINUTES * 60 * 1000)
 
     result = await db.execute(
         select(User).where(
@@ -78,6 +96,8 @@ async def get_nearby_users(
 
     users_response = []
     for user in nearby_users:
+        if user.location_timestamp is not None and user.location_timestamp < stale_threshold_ts:
+            continue
         distance = haversine_distance(lat, lng, user.last_latitude, user.last_longitude)
         if distance <= radius_km:
             users_response.append(

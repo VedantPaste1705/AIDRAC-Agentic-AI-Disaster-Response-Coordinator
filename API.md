@@ -103,6 +103,80 @@ Get the current authenticated user's profile.
 }
 ```
 
+### POST /api/users/location
+
+Update the current user's GPS location. Sets `is_online=true` and updates `last_location_update` to current timestamp.
+
+**Authentication:** Required (user)
+
+**Request Body:**
+```json
+{
+  "latitude": 28.6139,
+  "longitude": 77.2090,
+  "accuracy": 10.5
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `latitude` | float | Yes | Latitude (-90 to 90) |
+| `longitude` | float | Yes | Longitude (-180 to 180) |
+| `accuracy` | float | No | GPS accuracy in meters (≥ 0) |
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "full_name": "John Doe",
+  "email": "john@example.com",
+  "role": "user"
+}
+```
+
+**Note:** The response is the updated user object (without location fields). The location is stored in the database and returned via the nearby endpoint.
+
+### GET /api/users/nearby
+
+Get nearby active users within the specified radius. Excludes the current user. Filters out users with `location_visibility=false` and stale locations (no update in last 5 minutes).
+
+**Authentication:** Required (user)
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `lat` | float | Yes | — | Latitude (-90 to 90) |
+| `lng` | float | Yes | — | Longitude (-180 to 180) |
+| `radius_km` | float | No | 10 | Search radius in kilometers (0.1 to 100) |
+
+**Response:**
+```json
+{
+  "users": [
+    {
+      "user_id": 2,
+      "full_name": "Jane Smith",
+      "latitude": 28.6200,
+      "longitude": 77.2100,
+      "distance_km": 0.85,
+      "last_seen": "2026-01-15T10:30:00Z",
+      "status": "active"
+    }
+  ],
+  "count": 1
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | int | Nearby user's ID |
+| `full_name` | string | Nearby user's full name |
+| `latitude` | float | Nearby user's latitude |
+| `longitude` | float | Nearby user's longitude |
+| `distance_km` | float | Haversine distance from requester (rounded to 3 decimals) |
+| `last_seen` | datetime (ISO 8601) | Timestamp of user's last location update |
+| `status` | string | Always "active" (stale users are filtered out) |
+
 ### GET /api/users/settings
 
 Get the current user's settings. Auto-creates default settings if they don't exist.

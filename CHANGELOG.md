@@ -1,17 +1,14 @@
 # Changelog
 
-## 2026-09 — Government Alert Location Resolution System
+## 2026-09 — Nearby Users / Shared Location
 
-- **Fixed critical bug**: Alerts without polygons were incorrectly displayed at user's GPS location
-- Implemented **priority-based location resolution** for Government/CAP alerts:
-  1. Polygon centroid → 2. Circle center → 3. Point coordinates → 4. Local geographic database (556k+ GeoNames) → 5. Nominatim fallback
-- **Multi-location support**: Alerts with multiple districts (e.g., "BEGUSARAI, BHAGALPUR, DARBHANGA") resolve each district separately
-- **Never uses user GPS** for alert positioning — alerts without coordinates render in list view only
-- **Background refresh updated**: Uses LocationResolver for new alerts; skips initial ingestion on startup to preserve resolved locations
-- Added `locations` table (556k+ Indian locations from GeoNames) + `alert_locations` junction table for multi-location support
-- MapPage renders multiple markers per alert (one per resolved district), like shelters/hospitals
-- Added `latitude`, `longitude`, `location_source` to Alert model + `locations` relationship
-- MapPage fetches all alerts (`all=true`), renders multiple markers per alert, no user-GPS fallback
+- Added GPS location sharing for authenticated users via `POST /api/users/location`
+- Extended `users` table with 6 new columns: `last_latitude`, `last_longitude`, `location_accuracy`, `last_location_update`, `location_visibility`, `is_online`
+- Implemented nearby user retrieval via `GET /api/users/nearby` with radius filtering, Haversine distance calculation, and stale-user exclusion (5-minute threshold)
+- Added frontend hooks: `useUserLocation` (periodic updates, 30s interval, 50m minimum movement) and `useNearbyUsers` (30s refresh, configurable radius)
+- Integrated nearby user display on MapPage: purple 👤 markers with distance popups and top-right count overlay
+- Added Alembic migration `7b9aa0df48e9_add_user_location_fields.py` for schema changes
+- Updated `AuthContext` and `SettingsContext` to support new user location fields
 
 ## 2026-07 — Light Theme Improvements
 

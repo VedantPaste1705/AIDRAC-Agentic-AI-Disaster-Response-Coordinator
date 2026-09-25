@@ -5,7 +5,6 @@ from app.models.disaster import Disaster
 from app.models.alert import Alert
 from app.models.route import Route
 from app.models.user_settings import UserSettings
-from app.models.location import Location
-from app.models.alert_location import AlertLocation
+from app.models.sos import SOSIncident, SOSStatus, SOSResponderType
 
-__all__ = ["User", "Shelter", "Hospital", "Disaster", "Alert", "Route", "UserSettings", "Location", "AlertLocation"]
+__all__ = ["User", "Shelter", "Hospital", "Disaster", "Alert", "Route", "UserSettings", "SOSIncident", "SOSStatus", "SOSResponderType"]

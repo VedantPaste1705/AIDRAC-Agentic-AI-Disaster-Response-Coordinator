@@ -92,6 +92,8 @@ export interface AuthState {
 export interface GeoPosition {
   lat: number;
   lng: number;
+  accuracy: number;
+  timestamp: number;
 }
 
 export interface GeolocationState {
@@ -100,6 +102,7 @@ export interface GeolocationState {
   loading: boolean;
   permissionDenied: boolean;
   unsupported: boolean;
+  permissionState: PermissionState;
 }
 
 export interface NearestItem<T> {
@@ -219,4 +222,80 @@ export interface NearbyUser {
 export interface NearbyUsersResponse {
   users: NearbyUser[];
   count: number;
+}
+
+export type SOSStatus = 
+  | 'active' 
+  | 'cancelled' 
+  | 'resolved' 
+  | 'received' 
+  | 'acknowledged' 
+  | 'awaiting_responder' 
+  | 'responder_assigned' 
+  | 'responder_accepted' 
+  | 'assistance_in_progress' 
+  | 'assistance_provided' 
+  | 'user_confirmed_safe';
+
+export type SOSResponderType = 'community' | 'official';
+
+export interface SOSIncident {
+  id: number;
+  reporting_user_id: number;
+  assigned_responder_id: number | null;
+  latitude: number;
+  longitude: number;
+  location_accuracy: number | null;
+  location_timestamp: number | null;
+  emergency_type: string | null;
+  emergency_details: string | null;
+  status: SOSStatus;
+  responder_type: SOSResponderType | null;
+  created_at: string;
+  updated_at: string;
+  accepted_at: string | null;
+  resolved_at: string | null;
+  reporting_user_name?: string;
+  assigned_responder_name?: string;
+}
+
+export interface SOSAdminListResponse {
+  id: number;
+  reporting_user_id: number;
+  reporting_user_name: string | null;
+  assigned_responder_id: number | null;
+  assigned_responder_name: string | null;
+  latitude: number;
+  longitude: number;
+  location_accuracy: number | null;
+  emergency_type: string | null;
+  status: SOSStatus;
+  responder_type: SOSResponderType | null;
+  created_at: string;
+  updated_at: string;
+  accepted_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface SOSNearbyResponse {
+  sos_id: number;
+  distance_km: number;
+  emergency_type: string | null;
+  created_at: string;
+  victim_name: string;
+}
+
+export interface SOSActiveResponse {
+  sos: SOSIncident | null;
+  is_responder: boolean;
+  responder_sos: SOSIncident | null;
+}
+
+export interface SOSIncidentCreate {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  timestamp?: number;
+  emergency_type?: string;
+  emergency_details?: string;
 }

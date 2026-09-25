@@ -42,6 +42,58 @@ Browser
 └─────────────────────────────────────────────┘
 ```
 
+## Nearby Users / Shared Location Flow
+
+```
+User Browser
+    │
+    ▼
+GPS / Geolocation API (navigator.geolocation.watchPosition)
+    │
+    ▼
+Frontend Location Hook (useUserLocation)
+    │
+    ▼
+HTTP POST /api/users/location (Bearer token)
+    │
+    ▼
+FastAPI Backend — Users Router
+    │
+    ▼
+SQLAlchemy User Model
+    │
+    ▼
+PostgreSQL — users table
+    │   last_latitude, last_longitude, location_accuracy,
+    │   last_location_update, location_visibility, is_online
+    ▼
+GET /api/users/nearby (Bearer token + lat/lng/radius)
+    │
+    ▼
+Database Query (filters: visibility=true, not stale (< 5 min),
+    distance <= radius_km, excludes current user)
+    │
+    ▼
+Response: NearbyUsersResponse { users: [...], count }
+    │
+    ▼
+Frontend Hook (useNearbyUsers)
+    │
+    ▼
+MapPage — Nearby User Markers + Count Overlay
+```
+
+### Location Sharing Details
+
+- **Origin**: Browser GPS via `navigator.geolocation.watchPosition` (high accuracy, 10s timeout, 5s max age)
+- **Transport**: HTTPS (required for GPS) → Axios with JWT interceptor → FastAPI `/api/users/location`
+- **Storage**: Extended `users` table with 6 new columns (see Database section)
+- **Retrieval**: Polling-based — `useNearbyUsers` hook fetches every 30 seconds (configurable); not WebSocket/real-time
+- **Display**: `MapPage` renders other users as purple 👤 markers with distance popups; top-right count overlay shows active nearby user count
+- **Visibility Control**: `location_visibility` boolean column — when `false`, user is excluded from nearby results but still stores own location
+- **Online State**: `is_online` boolean — set to `true` on location update; not actively set to `false` (stale filter handles effective offline)
+- **Stale Threshold**: 5 minutes (`STALE_THRESHOLD_MINUTES`) — users not updating within this window are filtered out of nearby results
+
 ## Frontend
 
 ### Routing
@@ -63,17 +115,15 @@ React Router v6 with the following structure:
 - **useApi** — generic async data fetching with loading/error/refetch states; dependency-based re-fetching
 - **useGeolocation** — browser Geolocation API wrapper with watchPosition support; exposes position, error, loading, permissionDenied, unsupported, refresh
 - **useWeather** — weather data fetching with 5-minute auto-refresh interval
+- **useUserLocation** — periodic location update to backend (default 30s interval, minimum 50m movement threshold); sends latitude, longitude, accuracy to `POST /api/users/location`
+- **useNearbyUsers** — fetches nearby active users from backend (default 30s refresh, 10km radius); returns users array with distance_km, last_seen, status and count
 
-### MapPage — Alert Rendering Logic
+### API Client
 
-`pages/MapPage.tsx` renders government alerts with correct geographic positioning:
-
-- **Fetch**: Calls `GET /api/alerts?all=true` (bypasses 200km distance filter)
-- **Polygon alerts**: Renders polygon + centroid marker
-- **Resolved coordinates**: Renders marker at `alert.latitude`/`alert.longitude`
-- **Multi-location alerts**: Renders one marker per entry in `alert.locations[]` (like shelters/hospitals)
-- **No coordinates**: Skips map marker entirely — **never falls back to user GPS**
-- **Filter**: Respects `settings.min_alert_severity` and `settings.show_gov_alerts`
+Single Axios client at `services/api.ts` with:
+- JWT token injection via request interceptor (reads from localStorage)
+- 401 redirect to `/login` via response interceptor
+- Domain-specific export objects: `authApi`, `shelterApi`, `hospitalApi`, `disasterApi`, `alertApi`, `settingsApi`, `routeApi`, `weatherApi`, `locationApi`, `aiApi`, `userApi`, `routingApi` (note: `routingApi` is defined but unused; routing uses direct `fetch()` in `utils/routing.ts`)
 
 ### Styling
 
@@ -107,6 +157,16 @@ Entry point: `app/main.py`
 | `location.py` | `/api/location` | Location / OSM |
 | `ai.py` | `/api/ai` | AI |
 
+### User Router Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/users/me` | Current user profile |
+| POST | `/api/users/location` | Update current user's GPS location |
+| GET | `/api/users/nearby` | Get nearby active users within radius |
+| GET | `/api/users/settings` | Get current user's settings |
+| PUT | `/api/users/settings` | Update current user's settings |
+
 ### Services
 
 Business logic is isolated in `app/services/`:
@@ -119,14 +179,12 @@ Business logic is isolated in `app/services/`:
 - **overpass_service.py** — HTTP client with 3-server retry chain (configurable primary + 2 fallbacks)
 - **routing_service.py** — OSRM routing with Haversine straight-line fallback (used by LangGraph Route Agent)
 - **incident_service.py** — LangGraph checkpoint management via MemorySaver
-- **location_resolver.py** — **NEW**: Priority-based location resolution for CAP alerts (polygon → circle → point → local GeoNames DB → Nominatim); supports multi-location resolution; caches 556k+ Indian locations from GeoNames
 
 ### CAP Ingestion
 
 Located in `app/disaster_sources/`:
-- **CapProvider** — fetches RSS feeds, parses CAP XML 1.2, extracts alerts with polygon, circle, and point data
-- **LocationResolver** — resolves alert coordinates using priority: polygon centroid → circle center → point → local GeoNames DB (556k+ Indian locations) → Nominatim fallback; supports multi-location resolution for comma-separated area strings
-- **BackgroundIngestion** — asyncio background task polling every 300 seconds; uses LocationResolver for new alerts; **skips initial ingestion on startup** to preserve already-resolved coordinates
+- **CapProvider** — fetches RSS feeds, parses CAP XML 1.2, extracts alerts with polygon data
+- **BackgroundIngestion** — asyncio background task polling every 300 seconds
 - **CacheService** — in-memory TTL cache for RSS feeds and CAP XML files
 - Multi-source: IMD (primary) and NDMA (secondary, frequently rate-limited), merged by `external_id`
 
@@ -144,20 +202,18 @@ Located in `app/langgraph/`:
 
 ### PostgreSQL Schema
 
-- **users** — id, full_name, email, password (hashed), role (enum: admin/user)
+- **users** — id, full_name, email, password (hashed), role (enum: admin/user), last_latitude, last_longitude, location_accuracy, last_location_update, location_visibility, is_online
 - **user_settings** — id, user_id (FK, unique), theme, accent_color, notifications_enabled, email_notifications, push_notifications, sound_alerts, emergency_radius, min_alert_severity, default_map_type, auto_locate, show_gov_alerts, show_user_disasters, larger_text, reduced_motion
 - **shelters** — id, name, latitude, longitude, capacity, occupancy, phone, address
 - **hospitals** — id, name, latitude, longitude, emergency_available, phone, address
 - **disasters** — id, type, severity, latitude, longitude, description, status, created_at
-- **alerts** — id, title, message, disaster_id (FK), severity, created_at, external_id (unique), expires_at, event, urgency, certainty, area, is_active, expired_at, polygons, source, **latitude, longitude, location_source**
+- **alerts** — id, title, message, disaster_id (FK), severity, created_at, external_id (unique), expires_at, event, urgency, certainty, area, is_active, expired_at, polygons, source
 - **routes** — id, source_lat, source_lng, destination_lat, destination_lng, estimated_time, distance_km
-- **locations** — id, name, normalized_name, latitude, longitude, type, state, district, country, aliases (556k+ GeoNames entries for India)
-- **alert_locations** — id, alert_id (FK), name, latitude, longitude, location_source, location_type, state, district, resolved_order (multi-location support for alerts)
 
 ### ORM
 
 - SQLAlchemy 2.0 async with `asyncpg` driver
-- No Alembic migrations in use — tables created on startup via `Base.metadata.create_all`
+- Alembic migrations in use — initial migration `2bfd451b4aed` for alerts history fields, latest migration `7b9aa0df48e9` adds user location fields (6 columns to users table)
 
 ## External Dependencies
 
