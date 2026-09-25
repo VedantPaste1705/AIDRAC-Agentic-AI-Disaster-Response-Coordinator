@@ -175,6 +175,18 @@ def _evaluate_user_alert_risk(
                         score += 8
                     else:
                         score += 4
+        elif getattr(alert, "latitude", None) is not None and getattr(alert, "longitude", None) is not None:
+            alert_lat = getattr(alert, "latitude")
+            alert_lng = getattr(alert, "longitude")
+            dist = _haversine(lat, lng, alert_lat, alert_lng)
+            if dist <= NEARBY_RADIUS_KM:
+                nearby_count += 1
+                if rank <= 1:
+                    score += 12
+                elif rank <= 3:
+                    score += 8
+                else:
+                    score += 4
 
     return (score, nearby_count, inside_polygon, evacuation_order)
 

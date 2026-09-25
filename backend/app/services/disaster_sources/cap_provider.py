@@ -290,6 +290,8 @@ class CapProvider(AlertProvider):
         area_elem = info.find(f"{{{ns}}}area")
         area_str = ""
         polygons: list[str] = []
+        circle: str | None = None
+        point: str | None = None
         if area_elem is not None:
             area_desc_el = area_elem.find(f"{{{ns}}}areaDesc")
             if area_desc_el is not None and area_desc_el.text:
@@ -297,6 +299,12 @@ class CapProvider(AlertProvider):
             for poly in area_elem.iter(f"{{{ns}}}polygon"):
                 if poly.text:
                     polygons.append(poly.text.strip())
+            circle_el = area_elem.find(f"{{{ns}}}circle")
+            if circle_el is not None and circle_el.text:
+                circle = circle_el.text.strip()
+            point_el = area_elem.find(f"{{{ns}}}point")
+            if point_el is not None and point_el.text:
+                point = point_el.text.strip()
 
         return AlertData(
             external_id=identifier,
@@ -311,6 +319,8 @@ class CapProvider(AlertProvider):
             effective=effective,
             expires=expires,
             polygons=polygons if polygons else None,
+            circle=circle,
+            point=point,
             source=label,
         )
 

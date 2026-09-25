@@ -6,9 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.alert import Alert
+from app.models.alert_location import AlertLocation
 from app.services.disaster_sources.cap_provider import CapProvider
 from app.services.disaster_sources.base import canonical_alert_id
 from app.services.disaster_sources.normalizer import alert_data_to_dict
+from app.services.location_resolver import LocationResolver, get_location_resolver
 from app.config.settings import settings
 
 logger = logging.getLogger("aidrac.disaster_sources.background_refresh")
@@ -25,15 +27,19 @@ class BackgroundIngestion:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._cap = CapProvider()
+        self._location_resolver: LocationResolver | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+
+    async def _get_location_resolver(self) -> LocationResolver:
+        if self._location_resolver is None:
+            self._location_resolver = await get_location_resolver()
+        return self._location_resolver
 
     async def start(self) -> None:
         logger.info("Starting background alert ingestion every %d seconds", settings.REFRESH_INTERVAL_SECONDS)
         self._task = asyncio.create_task(self._run_loop())
-        logger.info("Running initial ingestion immediately")
-        await self._cap.clear_cache()
-        await self._ingest()
+        logger.info("Background refresh scheduled (initial ingestion skipped to preserve resolved locations)")
 
     async def stop(self) -> None:
         logger.info("Stopping background alert ingestion")
@@ -93,7 +99,26 @@ class BackgroundIngestion:
 
         inserted = 0
         updated = 0
+
+        resolver = await self._get_location_resolver()
+
         for alert_data in cap_alerts:
+            # Resolve all locations for this alert
+            resolved_locations = await resolver.resolve_all_locations(db, alert_data)
+
+            # Set primary location for backwards compatibility
+            if resolved_locations:
+                primary = resolved_locations[0]
+                alert_data.latitude = primary.latitude
+                alert_data.longitude = primary.longitude
+                alert_data.radius = primary.radius
+                alert_data.location_source = primary.location_source
+            else:
+                alert_data.latitude = None
+                alert_data.longitude = None
+                alert_data.radius = None
+                alert_data.location_source = None
+
             fields = alert_data_to_dict(alert_data)
             dedup_key = canonical_alert_id(alert_data.external_id)
             row = existing.get(dedup_key)
@@ -104,13 +129,32 @@ class BackgroundIngestion:
                 if not row.is_active:
                     row.is_active = True
                     row.expired_at = None
+                # Delete old locations and insert new ones
+                from sqlalchemy import delete
+                await db.execute(delete(AlertLocation).where(AlertLocation.alert_id == row.id))
                 updated += 1
             else:
-                row = Alert(**fields, is_active=True)
+                row = Alert(**fields)
                 db.add(row)
-                # Also deduplicate matching target variants in this same feed.
+                await db.flush()  # Get the ID
                 existing[dedup_key] = row
                 inserted += 1
+
+            # Insert resolved locations
+            if resolved_locations:
+                for loc in resolved_locations:
+                    alert_loc = AlertLocation(
+                        alert_id=row.id,
+                        name=loc.name,
+                        latitude=loc.latitude,
+                        longitude=loc.longitude,
+                        location_source=loc.location_source,
+                        location_type=loc.location_type,
+                        state=loc.state,
+                        district=loc.district,
+                        resolved_order=loc.order,
+                    )
+                    db.add(alert_loc)
 
         await db.flush()
         logger.info("Background sync: %d inserted, %d updated", inserted, updated)

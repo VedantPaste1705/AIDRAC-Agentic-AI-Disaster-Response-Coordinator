@@ -36,6 +36,16 @@ class AlertData:
     polygons: list[str] | None = None
     source: str = "cap"
 
+    # CAP geographic elements
+    circle: str | None = None  # "lat,lng radius"
+    point: str | None = None   # "lat,lng"
+
+    # Resolved location (set by LocationResolver during ingestion)
+    latitude: float | None = None
+    longitude: float | None = None
+    radius: float | None = None
+    location_source: str | None = None  # "polygon", "circle", "point", "local_database", "geocoder"
+
 
 _NDMA_IDENTIFIER_TARGET_SUFFIX = re.compile(r"^(IN-\d+)_\d+$")
 

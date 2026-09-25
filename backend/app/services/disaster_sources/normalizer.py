@@ -22,6 +22,9 @@ def alert_data_to_dict(data: AlertData) -> dict[str, Any]:
         "expires_at": _parse_datetime(data.expires) if data.expires else None,
         "polygons": polygons_str,
         "source": data.source,
+        "latitude": data.latitude,
+        "longitude": data.longitude,
+        "location_source": data.location_source,
     }
 
     # `created_at` is the timestamp displayed by the frontend. For CAP

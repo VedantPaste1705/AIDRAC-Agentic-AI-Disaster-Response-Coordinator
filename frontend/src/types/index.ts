@@ -37,6 +37,17 @@ export interface Disaster {
   created_at: string;
 }
 
+export interface AlertLocation {
+  name: string;
+  latitude: number;
+  longitude: number;
+  location_source: string;
+  location_type?: string | null;
+  state?: string | null;
+  district?: string | null;
+  resolved_order?: number | null;
+}
+
 export interface Alert {
   id: number;
   title: string;
@@ -54,6 +65,10 @@ export interface Alert {
   certainty?: string;
   polygons?: string;
   source?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_source?: string | null;
+  locations?: AlertLocation[];
 }
 
 export interface Weather {
