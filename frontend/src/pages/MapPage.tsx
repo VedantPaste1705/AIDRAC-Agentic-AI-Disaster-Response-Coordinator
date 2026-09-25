@@ -259,6 +259,16 @@ function meetsMinSeverity(severity: string, min: string): boolean {
   return (SEVERITY_RANK[severity] ?? 6) <= (SEVERITY_RANK[min] ?? 6);
 }
 
+function isPositionFresh(position: GeoPosition | null, staleThresholdMs = 30000): boolean {
+  if (!position) return false;
+  return Date.now() - position.timestamp < staleThresholdMs;
+}
+
+function isPositionAccurate(position: GeoPosition | null, maxAccuracyMeters = 100): boolean {
+  if (!position) return false;
+  return position.accuracy <= maxAccuracyMeters;
+}
+
 export default function MapPage() {
   const { settings } = useSettings();
   const location = useLocation();
@@ -278,9 +288,17 @@ export default function MapPage() {
   const [locateKey, setLocateKey] = useState(0);
   const [localDest, setLocalDest] = useState<{ destination: NearestItem<NearbyPlace>; type: EmergencyDestinationType } | null>(null);
 
-  const position = navState?.userPosition || geolocation.position;
-  const hasGps = !!position;
-  const posTuple: [number, number] = position ? [position.lat, position.lng] : [0, 0];
+  const browserPosition = geolocation.position;
+  const navPosition: GeoPosition | null = navState?.userPosition ?? null;
+  const hasFreshBrowserPosition = isPositionFresh(browserPosition) && isPositionAccurate(browserPosition);
+  const hasFreshNavPosition = isPositionFresh(navPosition) && isPositionAccurate(navPosition);
+  
+  const currentPosition = hasFreshBrowserPosition ? browserPosition : (hasFreshNavPosition ? navPosition : null);
+  const lastKnownPosition = browserPosition || navPosition;
+  const hasGps = !!currentPosition;
+  const posTuple: [number, number] = currentPosition ? [currentPosition.lat, currentPosition.lng] : [0, 0];
+  const isUsingLastKnown = !hasFreshBrowserPosition && hasFreshNavPosition;
+  const isStale = lastKnownPosition && !isPositionFresh(lastKnownPosition);
 
   const mapType = settings.default_map_type || 'standard';
   const tileUrl = TILE_URLS[mapType] || TILE_URLS.standard;
@@ -288,8 +306,8 @@ export default function MapPage() {
   const radiusMeters = settings.emergency_radius * 1000;
 
   // Nearby users
-  const { sendLocation } = useUserLocation(position, { enabled: hasGps, updateIntervalMs: 30000 });
-  const { users: nearbyUsers, count: nearbyUsersCount, loading: nearbyUsersLoading } = useNearbyUsers(position, {
+  const { sendLocation } = useUserLocation(currentPosition, { enabled: hasGps, updateIntervalMs: 30000 });
+  const { users: nearbyUsers, count: nearbyUsersCount, loading: nearbyUsersLoading } = useNearbyUsers(currentPosition, {
     enabled: hasGps,
     refreshIntervalMs: 30000,
     radiusKm: settings.emergency_radius,
@@ -299,13 +317,13 @@ export default function MapPage() {
   const { data: dbHospitals, loading: dbHospitalsLoading } = useApi<Hospital[]>(() => hospitalApi.getAll());
   const { data: disasters, loading: disastersLoading } = useApi<Disaster[]>(() => disasterApi.getAll());
   const { data: alertsData, loading: alertsLoading } = useApi<Alert[]>(
-    () => alertApi.getAll(position ? { lat: position.lat, lng: position.lng } : undefined),
-    [position?.lat, position?.lng]
+    () => alertApi.getAll(currentPosition ? { lat: currentPosition.lat, lng: currentPosition.lng } : undefined),
+    [currentPosition?.lat, currentPosition?.lng]
   );
 
   const { data: nearby, loading: nearbyLoading, refetch: refetchNearby } = useApi<NearbyResponse>(
-    () => position ? locationApi.nearby(position.lat, position.lng, radiusMeters) : Promise.reject('no gps'),
-    [position?.lat, position?.lng, radiusMeters]
+    () => currentPosition ? locationApi.nearby(currentPosition.lat, currentPosition.lng, radiusMeters) : Promise.reject('no gps'),
+    [currentPosition?.lat, currentPosition?.lng, radiusMeters]
   );
 
   const loading = dbSheltersLoading || dbHospitalsLoading || disastersLoading || alertsLoading;
@@ -355,12 +373,12 @@ export default function MapPage() {
   const destination: NearestItem<NearbyPlace> | null = localDest?.destination ?? navState?.destinationItem ?? null;
 
   const fetchRoute = useCallback(async () => {
-    if (!position || !destination) return;
+    if (!currentPosition || !destination) return;
     setRouteLoading(true);
     setRouteError(null);
     try {
       const routeData = await getRoute(
-        [position.lat, position.lng],
+        [currentPosition.lat, currentPosition.lng],
         [destination.item.latitude, destination.item.longitude]
       );
       setRoute(routeData);
@@ -370,13 +388,13 @@ export default function MapPage() {
     } finally {
       setRouteLoading(false);
     }
-  }, [position, destination]);
+  }, [currentPosition, destination]);
 
   useEffect(() => {
-    if (showRoutePanel && position && destination) {
+    if (showRoutePanel && currentPosition && destination) {
       fetchRoute();
     }
-  }, [showRoutePanel, position, destination, fetchRoute]);
+  }, [showRoutePanel, currentPosition, destination, fetchRoute]);
 
   useEffect(() => {
     if (navState?.emergencyRoute && navState?.destinationItem && navState?.destinationType) {
@@ -385,7 +403,7 @@ export default function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { if (position && settings.auto_locate) refetchNearby(); }, [position?.lat, position?.lng, settings.auto_locate]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (currentPosition && settings.auto_locate) refetchNearby(); }, [currentPosition?.lat, currentPosition?.lng, settings.auto_locate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const routeBounds = useMemo(() => {
     if (!route?.coordinates.length) return null;
@@ -417,29 +435,29 @@ export default function MapPage() {
   }, []);
 
   const handleLocateMe = useCallback(() => {
-    if (position) {
+    if (currentPosition) {
       setLocateKey((k) => k + 1);
     } else {
       geolocation.refresh();
     }
-  }, [position, geolocation]);
+  }, [currentPosition, geolocation]);
 
   const handleFindDestination = useCallback((category: EmergencyDestinationType) => {
-    if (!position || !nearby) return;
+    if (!currentPosition || !nearby) return;
     const nearbyKey = getCategory(category);
     if (!nearbyKey) return;
     const items = nearby[nearbyKey];
     if (!items || items.length === 0) return;
-    const nearest = findNearest(items, position.lat, position.lng);
+    const nearest = findNearest(items, currentPosition.lat, currentPosition.lng);
     if (nearest) setDestination(nearest, category);
-  }, [position, nearby, setDestination]);
+  }, [currentPosition, nearby, setDestination]);
 
   useEffect(() => {
-    if (!position || !hasGps) return;
+    if (!currentPosition || !hasGps) return;
     const radiusKm = settings.emergency_radius;
-    const points: [number, number][] = [[position.lat, position.lng]];
+    const points: [number, number][] = [[currentPosition.lat, currentPosition.lng]];
     for (const d of visibleDisasters) {
-      if (haversineDistance(position.lat, position.lng, d.latitude, d.longitude) <= radiusKm) {
+      if (haversineDistance(currentPosition.lat, currentPosition.lng, d.latitude, d.longitude) <= radiusKm) {
         points.push([d.latitude, d.longitude]);
       }
     }
@@ -447,7 +465,7 @@ export default function MapPage() {
       const polys = parseAlertPolygons(a.polygons);
       if (polys.length > 0) {
         const c = polygonCentroid(polys[0]);
-        if (haversineDistance(position.lat, position.lng, c[0], c[1]) <= radiusKm) {
+        if (haversineDistance(currentPosition.lat, currentPosition.lng, c[0], c[1]) <= radiusKm) {
           points.push(c);
         }
       }
@@ -460,7 +478,7 @@ export default function MapPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [position?.lat, position?.lng, visibleDisasters, alerts, hasGps, settings.emergency_radius]);
+  }, [currentPosition?.lat, currentPosition?.lng, visibleDisasters, alerts, hasGps, settings.emergency_radius]);
 
   const [fitBounds, setBoundsToFit] = useState<L.LatLngBoundsExpression | null>(null);
 
@@ -520,8 +538,30 @@ export default function MapPage() {
             />
           )}
 
+          {currentPosition && currentPosition.accuracy && (
+            <Circle
+              center={posTuple}
+              radius={currentPosition.accuracy}
+              pathOptions={{ color: '#1e40af', fillColor: '#1e40af', fillOpacity: 0.1, weight: 1, dashArray: '4, 4' }}
+            />
+          )}
+
           <Marker position={posTuple} icon={userIcon}>
-            <Popup><div className="text-sm font-medium">You are here</div></Popup>
+            <Popup>
+              <div className="text-sm font-medium">
+                You are here{isUsingLastKnown && ' (last known)'}
+                {currentPosition && currentPosition.accuracy && (
+                  <div className="text-xs text-on-surface-variant mt-1">
+                    Accuracy: ~{Math.round(currentPosition.accuracy)}m
+                  </div>
+                )}
+                {isStale && (
+                  <div className="text-xs text-yellow-500 mt-1">
+                    Location may be stale
+                  </div>
+                )}
+              </div>
+            </Popup>
           </Marker>
 
           {nearbyUsers.length > 0 &&
@@ -643,9 +683,9 @@ export default function MapPage() {
                       <p className="capitalize">Severity: {d.severity}</p>
                       <p className="capitalize">Status: {d.status}</p>
                       {d.description && <p className="text-xs text-on-surface-variant mt-1">{d.description}</p>}
-                      {position && (
+                      {currentPosition && (
                         <p className="text-xs text-on-surface-variant/60 mt-1">
-                          {findNearest([d as Disaster], position.lat, position.lng)?.distanceKm.toFixed(2)} km away
+                          {findNearest([d as Disaster], currentPosition.lat, currentPosition.lng)?.distanceKm.toFixed(2)} km away
                         </p>
                       )}
                     </div>
@@ -706,11 +746,11 @@ export default function MapPage() {
             {nearbyLoading && !nearby && (
               <div className="text-xs font-mono text-slate-500 text-center py-3">Loading live data...</div>
             )}
-            {!position && (
+            {!currentPosition && (
               <div className="text-xs font-mono text-slate-500 text-center py-3">Enable GPS...</div>
             )}
 
-            {position && nearby && (
+            {currentPosition && nearby && (
               <Card variant="glass" padding="sm">
                 <div className="flex items-center gap-2 mb-2">
                   <MaterialIcon icon="layers" className="text-base text-slate-400" />
@@ -733,7 +773,7 @@ export default function MapPage() {
               <div className="grid grid-cols-2 gap-1 mb-1.5">
                 <button
                   onClick={() => handleFindDestination('shelter')}
-                  disabled={!position}
+                  disabled={!currentPosition}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-800/40 border border-slate-700/40 hover:bg-secondary-500/10 hover:border-secondary-500/25 text-slate-400 hover:text-white transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
                 >
                   <span className="w-4 overflow-hidden inline-flex items-center justify-center"><MaterialIcon icon="emergency_home" className="text-sm text-secondary-400" /></span>
@@ -741,7 +781,7 @@ export default function MapPage() {
                 </button>
                 <button
                   onClick={() => handleFindDestination('hospital')}
-                  disabled={!position}
+                  disabled={!currentPosition}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-800/40 border border-slate-700/40 hover:bg-danger-500/10 hover:border-danger-500/25 text-slate-400 hover:text-white transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
                 >
                   <span className="w-4 overflow-hidden inline-flex items-center justify-center"><MaterialIcon icon="local_hospital" className="text-sm text-danger-400" /></span>
@@ -749,7 +789,7 @@ export default function MapPage() {
                 </button>
                 <button
                   onClick={() => handleFindDestination('police')}
-                  disabled={!position}
+                  disabled={!currentPosition}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-800/40 border border-slate-700/40 hover:bg-blue-500/10 hover:border-blue-500/25 text-slate-400 hover:text-white transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
                 >
                   <span className="w-4 overflow-hidden inline-flex items-center justify-center"><MaterialIcon icon="local_police" className="text-sm text-blue-400" /></span>
@@ -757,7 +797,7 @@ export default function MapPage() {
                 </button>
                 <button
                   onClick={() => handleFindDestination('firestation')}
-                  disabled={!position}
+                  disabled={!currentPosition}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-800/40 border border-slate-700/40 hover:bg-orange-500/10 hover:border-orange-500/25 text-slate-400 hover:text-white transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
                 >
                   <span className="w-4 overflow-hidden inline-flex items-center justify-center"><MaterialIcon icon="fire_truck" className="text-sm text-orange-400" /></span>
@@ -765,7 +805,7 @@ export default function MapPage() {
                 </button>
                 <button
                   onClick={() => handleFindDestination('pharmacy')}
-                  disabled={!position}
+                  disabled={!currentPosition}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-800/40 border border-slate-700/40 hover:bg-emerald-500/10 hover:border-emerald-500/25 text-slate-400 hover:text-white transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
                 >
                   <span className="w-4 overflow-hidden inline-flex items-center justify-center"><Pill className="text-emerald-400" size={16} /></span>

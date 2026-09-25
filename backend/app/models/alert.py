@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, DateTime, func, Float, BigInteger
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
 
@@ -24,5 +24,10 @@ class Alert(Base):
     expired_at = Column(DateTime(timezone=True), nullable=True)
     polygons = Column(Text, nullable=True)
     source = Column(String(50), nullable=True)
+
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    accuracy = Column(Float, nullable=True)
+    timestamp = Column(BigInteger, nullable=True)
 
     disaster = relationship("Disaster", backref="alerts")

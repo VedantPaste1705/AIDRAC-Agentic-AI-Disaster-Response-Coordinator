@@ -80,10 +80,30 @@ export const locationApi = {
 };
 
 export const userApi = {
-  updateLocation: (data: { latitude: number; longitude: number; accuracy?: number }) =>
+  updateLocation: (data: { latitude: number; longitude: number; accuracy?: number; timestamp?: number }) =>
     api.post('/users/location', data),
   getNearbyUsers: (lat: number, lng: number, radiusKm?: number) =>
     api.get('/users/nearby', { params: { lat, lng, radius_km: radiusKm ?? 10 } }),
+};
+
+export const sosApi = {
+  create: (data: any) => api.post('/sos', data),
+  getActive: () => api.get('/sos/active'),
+  getNearby: (lat: number, lng: number, radiusKm?: number) =>
+    api.get('/sos/nearby', { params: { lat, lng, radius_km: radiusKm ?? 10 } }),
+  getById: (id: number) => api.get(`/sos/${id}`),
+  cancel: (id: number) => api.post(`/sos/${id}/cancel`),
+  accept: (id: number) => api.post(`/sos/${id}/accept`),
+  updateStatus: (id: number, data: any) => api.post(`/sos/${id}/status`, data),
+  confirmSafe: (id: number) => api.post(`/sos/${id}/confirm-safe`),
+  getHistory: (params?: { limit?: number; offset?: number }) =>
+    api.get('/sos/my/history', { params }),
+  // Admin
+  adminGetActive: () => api.get('/sos/admin/active'),
+  adminGetHistory: (params?: { limit?: number; offset?: number }) =>
+    api.get('/sos/admin/history', { params }),
+  adminAssignResponder: (id: number, responderId?: number) =>
+    api.post(`/sos/admin/${id}/responder`, null, { params: { responder_id: responderId } }),
 };
 
 export const aiApi = {

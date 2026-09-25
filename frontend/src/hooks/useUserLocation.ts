@@ -7,19 +7,30 @@ interface UseUserLocationOptions {
   enabled?: boolean;
   updateIntervalMs?: number;
   minDistanceMeters?: number;
+  minAccuracyMeters?: number;
 }
 
 export function useUserLocation(
   position: GeoPosition | null,
   options: UseUserLocationOptions = {}
 ) {
-  const { enabled = true, updateIntervalMs = 30000, minDistanceMeters = 50 } = options;
+  const {
+    enabled = true,
+    updateIntervalMs = 30000,
+    minDistanceMeters = 50,
+    minAccuracyMeters = 100,
+  } = options;
   const { user, token } = useAuth();
   const lastSentPosition = useRef<GeoPosition | null>(null);
   const intervalRef = useRef<number | null>(null);
 
   const sendLocation = useCallback(async () => {
     if (!position || !user || !token) return;
+
+    if (position.accuracy > minAccuracyMeters) {
+      console.debug('Location accuracy too low:', position.accuracy);
+      return;
+    }
 
     if (lastSentPosition.current) {
       const dx = position.lat - lastSentPosition.current.lat;
@@ -28,17 +39,24 @@ export function useUserLocation(
       if (distanceMeters < minDistanceMeters) return;
     }
 
+    const now = Date.now();
+    if (now - position.timestamp > 30000) {
+      console.debug('Location timestamp too old:', now - position.timestamp);
+      return;
+    }
+
     try {
       await userApi.updateLocation({
         latitude: position.lat,
         longitude: position.lng,
-        accuracy: 0,
+        accuracy: position.accuracy,
+        timestamp: position.timestamp,
       });
       lastSentPosition.current = { ...position };
     } catch (error) {
       console.error('Failed to update user location:', error);
     }
-  }, [position, user, token, minDistanceMeters]);
+  }, [position, user, token, minDistanceMeters, minAccuracyMeters]);
 
   useEffect(() => {
     if (!enabled || !position) return;
