@@ -20,6 +20,7 @@
 - **Incident Memory** — optional incident_id for state preservation across requests
 - **CAP Alert Polygons** — ingested, stored, rendered on map with severity coloring, centroid icons, and popups
 - **Location-Aware Alert Filtering** — polygon-based geofencing (point-in-polygon) with centroid radius fallback
+- **Nearby Users / Shared Location** — GPS location sharing, nearby user retrieval, map display with distance and count, stale filtering (5 min), location visibility toggle, online state
 
 ## 🔄 In Progress
 

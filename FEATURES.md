@@ -26,6 +26,27 @@
 | Layer filter chips | ✅ Implemented | 8 filter toggles (All, Shelters, Hospitals, Police, Fire, Pharmacy, Disasters, Gov Alerts) |
 | Map legend overlay | ❌ Not implemented | Only filter chips exist |
 | Auto-locate on startup | ✅ Implemented | |
+| Nearby user markers | ✅ Implemented | Purple 👤 markers with distance popups |
+| Nearby user count overlay | ✅ Implemented | Top-right card showing active nearby user count |
+
+## Nearby Users / Shared Location
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| GPS location sharing | ✅ Implemented | POST /api/users/location |
+| Latitude/longitude storage | ✅ Implemented | users.last_latitude, users.last_longitude |
+| Location accuracy | ✅ Implemented | users.location_accuracy |
+| Last location update timestamp | ✅ Implemented | users.last_location_update (timezone-aware) |
+| Location visibility toggle | ✅ Implemented | users.location_visibility (excludes from nearby when false) |
+| Online/offline state | ✅ Implemented | users.is_online (set true on update; stale filter handles effective offline) |
+| Nearby user retrieval | ✅ Implemented | GET /api/users/nearby with radius filter |
+| Haversine distance calculation | ✅ Implemented | Backend and frontend |
+| Nearby user map display | ✅ Implemented | Purple markers on MapPage |
+| Nearby user count display | ✅ Implemented | Count card on map |
+| Frontend location update hook | ✅ Implemented | useUserLocation (30s interval, 50m threshold) |
+| Frontend nearby users hook | ✅ Implemented | useNearbyUsers (30s refresh, 10km radius) |
+| Stale user filtering (5 min) | ✅ Implemented | Excludes users with last_location_update > 5 min ago |
+| Database migration | ✅ Implemented | Alembic revision 7b9aa0df48e9 |
 
 ## Emergency Response
 

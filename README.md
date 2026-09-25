@@ -5,9 +5,10 @@ A full-stack disaster management application that helps citizens during natural 
 ## Features
 
 - **JWT Authentication** — register, login, token-based session management with auto-redirect on 401
-- **Interactive Map** — Leaflet-based map with standard/satellite/terrain tile layers, custom POI markers, disaster zones with severity-based circles, CAP alert polygons with severity-colored fills, and layer filter chips
+- **Interactive Map** — Leaflet-based map with standard/satellite/terrain tile layers, custom POI markers, disaster zones with severity-based circles, CAP alert polygons with severity-colored fills, nearby user markers with distance popups, nearby user count overlay, and layer filter chips
 - **Live OpenStreetMap Infrastructure** — real-time Overpass API queries for nearby shelters, hospitals, police stations, fire stations, pharmacies, community centres, and schools (7 categories, 3-server retry chain, 10-minute TTL cache)
 - **Nearby Hospitals & Shelters** — dedicated pages showing live OSM data sorted by distance, with GPS location prompt
+- **Nearby Users / Shared Location** — authenticated users share GPS location via `POST /api/users/location`; nearby active users retrieved via `GET /api/users/nearby` with Haversine distance, 5-minute stale filter, visibility toggle, and online state; displayed on map with purple markers and count overlay
 - **Emergency SOS** — floating button for quick access to the map with routing to nearest facility
 - **Route Generation** — walking routes with turn-by-turn directions via OpenRouteService or OSRM public API (frontend), or OSRM with straight-line Haversine fallback (backend LangGraph agents)
 - **Safe Destination Scoring** — weighted algorithm that selects the best nearby facility by type and distance
@@ -19,6 +20,7 @@ A full-stack disaster management application that helps citizens during natural 
 - **Accent Color Switching** — sapphire, amber, and emerald accent palettes applied via CSS variables
 - **Admin Dashboard** — overview of shelters with occupancy stats, hospitals with emergency readiness, active disasters table with severity badges, and system status
 - **PostgreSQL Persistence** — all users, settings, shelters, hospitals, disasters, alerts, and routes stored in PostgreSQL
+- **Database Migrations** — Alembic migrations for schema evolution (initial: 2bfd451b4aed, location fields: 7b9aa0df48e9)
 
 ## Technology Stack
 

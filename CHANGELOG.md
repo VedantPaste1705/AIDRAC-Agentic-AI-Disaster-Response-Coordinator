@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09 — Nearby Users / Shared Location
+
+- Added GPS location sharing for authenticated users via `POST /api/users/location`
+- Extended `users` table with 6 new columns: `last_latitude`, `last_longitude`, `location_accuracy`, `last_location_update`, `location_visibility`, `is_online`
+- Implemented nearby user retrieval via `GET /api/users/nearby` with radius filtering, Haversine distance calculation, and stale-user exclusion (5-minute threshold)
+- Added frontend hooks: `useUserLocation` (periodic updates, 30s interval, 50m minimum movement) and `useNearbyUsers` (30s refresh, configurable radius)
+- Integrated nearby user display on MapPage: purple 👤 markers with distance popups and top-right count overlay
+- Added Alembic migration `7b9aa0df48e9_add_user_location_fields.py` for schema changes
+- Updated `AuthContext` and `SettingsContext` to support new user location fields
+
 ## 2026-07 — Light Theme Improvements
 
 - Improved light theme contrast across all pages

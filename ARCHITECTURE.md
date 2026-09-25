@@ -42,6 +42,58 @@ Browser
 └─────────────────────────────────────────────┘
 ```
 
+## Nearby Users / Shared Location Flow
+
+```
+User Browser
+    │
+    ▼
+GPS / Geolocation API (navigator.geolocation.watchPosition)
+    │
+    ▼
+Frontend Location Hook (useUserLocation)
+    │
+    ▼
+HTTP POST /api/users/location (Bearer token)
+    │
+    ▼
+FastAPI Backend — Users Router
+    │
+    ▼
+SQLAlchemy User Model
+    │
+    ▼
+PostgreSQL — users table
+    │   last_latitude, last_longitude, location_accuracy,
+    │   last_location_update, location_visibility, is_online
+    ▼
+GET /api/users/nearby (Bearer token + lat/lng/radius)
+    │
+    ▼
+Database Query (filters: visibility=true, not stale (< 5 min),
+    distance <= radius_km, excludes current user)
+    │
+    ▼
+Response: NearbyUsersResponse { users: [...], count }
+    │
+    ▼
+Frontend Hook (useNearbyUsers)
+    │
+    ▼
+MapPage — Nearby User Markers + Count Overlay
+```
+
+### Location Sharing Details
+
+- **Origin**: Browser GPS via `navigator.geolocation.watchPosition` (high accuracy, 10s timeout, 5s max age)
+- **Transport**: HTTPS (required for GPS) → Axios with JWT interceptor → FastAPI `/api/users/location`
+- **Storage**: Extended `users` table with 6 new columns (see Database section)
+- **Retrieval**: Polling-based — `useNearbyUsers` hook fetches every 30 seconds (configurable); not WebSocket/real-time
+- **Display**: `MapPage` renders other users as purple 👤 markers with distance popups; top-right count overlay shows active nearby user count
+- **Visibility Control**: `location_visibility` boolean column — when `false`, user is excluded from nearby results but still stores own location
+- **Online State**: `is_online` boolean — set to `true` on location update; not actively set to `false` (stale filter handles effective offline)
+- **Stale Threshold**: 5 minutes (`STALE_THRESHOLD_MINUTES`) — users not updating within this window are filtered out of nearby results
+
 ## Frontend
 
 ### Routing
@@ -63,13 +115,15 @@ React Router v6 with the following structure:
 - **useApi** — generic async data fetching with loading/error/refetch states; dependency-based re-fetching
 - **useGeolocation** — browser Geolocation API wrapper with watchPosition support; exposes position, error, loading, permissionDenied, unsupported, refresh
 - **useWeather** — weather data fetching with 5-minute auto-refresh interval
+- **useUserLocation** — periodic location update to backend (default 30s interval, minimum 50m movement threshold); sends latitude, longitude, accuracy to `POST /api/users/location`
+- **useNearbyUsers** — fetches nearby active users from backend (default 30s refresh, 10km radius); returns users array with distance_km, last_seen, status and count
 
 ### API Client
 
 Single Axios client at `services/api.ts` with:
 - JWT token injection via request interceptor (reads from localStorage)
 - 401 redirect to `/login` via response interceptor
-- Domain-specific export objects: `authApi`, `shelterApi`, `hospitalApi`, `disasterApi`, `alertApi`, `settingsApi`, `routeApi`, `weatherApi`, `locationApi`, `aiApi`, `routingApi` (note: `routingApi` is defined but unused; routing uses direct `fetch()` in `utils/routing.ts`)
+- Domain-specific export objects: `authApi`, `shelterApi`, `hospitalApi`, `disasterApi`, `alertApi`, `settingsApi`, `routeApi`, `weatherApi`, `locationApi`, `aiApi`, `userApi`, `routingApi` (note: `routingApi` is defined but unused; routing uses direct `fetch()` in `utils/routing.ts`)
 
 ### Styling
 
@@ -102,6 +156,16 @@ Entry point: `app/main.py`
 | `weather.py` | `/api/weather` | Weather |
 | `location.py` | `/api/location` | Location / OSM |
 | `ai.py` | `/api/ai` | AI |
+
+### User Router Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/users/me` | Current user profile |
+| POST | `/api/users/location` | Update current user's GPS location |
+| GET | `/api/users/nearby` | Get nearby active users within radius |
+| GET | `/api/users/settings` | Get current user's settings |
+| PUT | `/api/users/settings` | Update current user's settings |
 
 ### Services
 
@@ -138,7 +202,7 @@ Located in `app/langgraph/`:
 
 ### PostgreSQL Schema
 
-- **users** — id, full_name, email, password (hashed), role (enum: admin/user)
+- **users** — id, full_name, email, password (hashed), role (enum: admin/user), last_latitude, last_longitude, location_accuracy, last_location_update, location_visibility, is_online
 - **user_settings** — id, user_id (FK, unique), theme, accent_color, notifications_enabled, email_notifications, push_notifications, sound_alerts, emergency_radius, min_alert_severity, default_map_type, auto_locate, show_gov_alerts, show_user_disasters, larger_text, reduced_motion
 - **shelters** — id, name, latitude, longitude, capacity, occupancy, phone, address
 - **hospitals** — id, name, latitude, longitude, emergency_available, phone, address
@@ -149,7 +213,7 @@ Located in `app/langgraph/`:
 ### ORM
 
 - SQLAlchemy 2.0 async with `asyncpg` driver
-- No Alembic migrations in use — tables created on startup via `Base.metadata.create_all`
+- Alembic migrations in use — initial migration `2bfd451b4aed` for alerts history fields, latest migration `7b9aa0df48e9` adds user location fields (6 columns to users table)
 
 ## External Dependencies
 
