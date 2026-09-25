@@ -116,6 +116,25 @@ export const riskApi = {
     api.get('/risk', { params: { lat, lng } }),
 };
 
+export const adminApi = {
+  getOverview: () => api.get('/admin/overview'),
+  getAlerts: (params?: { active_only?: boolean; limit?: number; offset?: number }) =>
+    api.get('/admin/alerts', { params }),
+  getSOS: (params?: { status_filter?: string; limit?: number; offset?: number }) =>
+    api.get('/admin/sos', { params }),
+  getResponders: (params?: { active_only?: boolean; limit?: number; offset?: number }) =>
+    api.get('/admin/responders', { params }),
+  getUsers: (params?: { limit?: number; offset?: number }) =>
+    api.get('/admin/users', { params }),
+  getIncidents: (params?: { status_filter?: string; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
+    api.get('/admin/incidents', { params }),
+  getZoneStats: (params?: { disaster_id?: number; alert_id?: number }) =>
+    api.get('/admin/zone-stats', { params }),
+  acknowledgeSOS: (sosId: number) => api.post(`/admin/sos/${sosId}/acknowledge`),
+  assignResponder: (sosId: number, responderId: number) => api.post(`/admin/sos/${sosId}/assign`, null, { params: { responder_id: responderId } }),
+  updateSOSStatus: (sosId: number, status: string) => api.post(`/admin/sos/${sosId}/status`, { status }),
+};
+
 export const routingApi = {
   ors: (start: [number, number], end: [number, number], apiKey: string) => {
     const body = {

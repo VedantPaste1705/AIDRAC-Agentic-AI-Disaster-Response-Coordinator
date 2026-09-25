@@ -156,6 +156,9 @@ Entry point: `app/main.py`
 | `weather.py` | `/api/weather` | Weather |
 | `location.py` | `/api/location` | Location / OSM |
 | `ai.py` | `/api/ai` | AI |
+| `risk.py` | `/api/risk` | Risk Assessment |
+| `sos.py` | `/api/sos` | SOS (User & Admin) |
+| `admin.py` | `/api/admin` | Admin Dashboard |
 
 ### User Router Endpoints
 
@@ -179,6 +182,7 @@ Business logic is isolated in `app/services/`:
 - **overpass_service.py** — HTTP client with 3-server retry chain (configurable primary + 2 fallbacks)
 - **routing_service.py** — OSRM routing with Haversine straight-line fallback (used by LangGraph Route Agent)
 - **incident_service.py** — LangGraph checkpoint management via MemorySaver
+- **sos.py** — SOS incident management, responder assignment, status transitions, admin override
 
 ### CAP Ingestion
 
@@ -226,3 +230,112 @@ Located in `app/langgraph/`:
 | IMD CAP RSS | Government weather alerts | None (public) |
 | NDMA CAP RSS | Government disaster alerts | None (public; frequently rate-limited) |
 | Google Gemini API | AI recommendations | API key (optional; deterministic fallback) |
+
+## Admin Dashboard Architecture
+
+### Admin Authentication
+- Reuses existing JWT authentication with role-based access control
+- `UserRole.ADMIN` enum value in User model
+- `require_admin` dependency in `app/utils/dependencies.py` validates admin role
+- Single admin account seeded via development script: `admin@aidrac.local`
+
+### Admin API Endpoints (`/api/admin`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/overview` | GET | Summary statistics (active alerts, SOS, people in zones, responders) |
+| `/alerts` | GET | List all active government alerts with locations |
+| `/sos` | GET | List SOS incidents with optional status filter |
+| `/responders` | GET | List nearby available responders (online users with location) |
+| `/users` | GET | List all users with location data |
+| `/incidents` | GET | SOS incident history with filtering |
+| `/zone-stats` | GET | Statistics for affected zone (people, SOS, responders) |
+| `/sos/{id}/acknowledge` | POST | Admin acknowledges SOS |
+| `/sos/{id}/assign` | POST | Admin assigns responder to SOS |
+| `/sos/{id}/status` | POST | Admin updates SOS status |
+
+### Admin Frontend (`/admin`)
+- Protected route guarded by `requireAdmin` prop in `ProtectedRoute`
+- Real-time overview cards with live backend data
+- Live disaster map (reuses MapPage components via iframe)
+- SOS management grouped by status: NEW, ACKNOWLEDGED, ASSIGNED, RESPONDING, RESOLVED
+- Available responders list with assignment capability
+- Affected zone statistics
+- Active government alerts display
+- Incident history with resolution tracking
+
+## SOS Emergency Response Architecture
+
+### SOS Lifecycle
+```
+USER PRESSES SOS
+       ↓
+POST /api/sos → SOSIncident created (status: ACTIVE)
+       ↓
+ADMIN RECEIVES SOS via /api/admin/sos (polling)
+NEARBY USERS RECEIVE SOS via /api/sos/nearby (Dashboard card)
+       ↓
+USER ACCEPTS SOS via POST /api/sos/{id}/accept
+       ↓
+SOS status: RESPONDER_ACCEPTED
+Responder assigned, RESPONDER tab appears
+       ↓
+RESPONDER UPDATES STATUS:
+  RESPONDER_ACCEPTED → ASSISTANCE_IN_PROGRESS (En Route)
+  ASSISTANCE_IN_PROGRESS → ASSISTANCE_PROVIDED (Helping)
+       ↓
+VICTIM CONFIRMS SAFE via POST /api/sos/{id}/confirm-safe
+       ↓
+SOS status: USER_CONFIRMED_SAFE → RESOLVED
+Responder tab disappears
+       ↓
+INCIDENT REMAINS IN ADMIN HISTORY via /api/admin/incidents
+```
+
+### SOS Status Transitions
+| Current Status | Allowed Next Status | Actor |
+|----------------|---------------------|-------|
+| ACTIVE, RECEIVED, ACKNOWLEDGED, AWAITING_RESPONDER | RESPONDER_ACCEPTED (accept) | Responder |
+| ACTIVE, RECEIVED, ACKNOWLEDGED, AWAITING_RESPONDER | ACKNOWLEDGED | Admin |
+| ACKNOWLEDGED, AWAITING_RESPONDER | RESPONDER_ASSIGNED (assign) | Admin |
+| RESPONDER_ACCEPTED | ASSISTANCE_IN_PROGRESS | Responder |
+| ASSISTANCE_IN_PROGRESS | ASSISTANCE_PROVIDED | Responder |
+| ASSISTANCE_PROVIDED | USER_CONFIRMED_SAFE | Victim |
+| USER_CONFIRMED_SAFE | RESOLVED | Auto (victim confirmation) |
+| Any (except resolved) | CANCELLED | Victim |
+| Any | Any | Admin (override) |
+
+### Responder Interface (Secret SOS Tab)
+- Only visible when user has accepted an SOS OR admin assigned them
+- Shows victim info, location, navigation, status progression
+- Real-time GPS tracking with navigation to victim
+- Status progression: Accepted → En Route → Helping → Completed
+- Auto-closes when SOS resolved (history preserved in admin)
+
+### Database Models
+- **SOSIncident** (`sos_incidents` table):
+  - `id`, `reporting_user_id`, `assigned_responder_id` (FKs to users)
+  - `latitude`, `longitude`, `location_accuracy`, `location_timestamp`
+  - `emergency_type`, `emergency_details`
+  - `status` (SOSStatus enum: 11 states)
+  - `responder_type` (COMMUNITY/OFFICIAL)
+  - `created_at`, `updated_at`, `accepted_at`, `resolved_at`
+
+### Nearby Responder System
+- Reuses existing `useNearbyUsers` / `/api/users/nearby` for location-based discovery
+- When SOS active: nearby eligible users see "EMERGENCY NEARBY" card on Dashboard
+- User clicks "ACCEPT TO HELP" → becomes responder for that SOS
+- Admin notified of assignment, responder gets dedicated SOS panel
+
+### Notification System
+- Browser notifications via `Notification` API (permission requested on app mount)
+- Alert sounds via Web Audio API
+- Wired to: nearby SOS detection, critical government alerts
+- Deduplication prevents spam (tracks last notified SOS/alert ID)
+- Respects user settings: `notifications_enabled`, `push_notifications`, `sound_alerts`
+
+### Security
+- SOS location only visible to: victim, assigned responder, admin
+- `/api/sos/{id}` endpoint enforces authorization (victim/responder/admin only)
+- Admin endpoints require `require_admin` dependency
+- Responder assignment validated (responder must exist, cannot self-respond)

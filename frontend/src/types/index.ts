@@ -299,3 +299,109 @@ export interface SOSIncidentCreate {
   emergency_type?: string;
   emergency_details?: string;
 }
+
+export interface AdminOverviewResponse {
+  active_alerts: number;
+  active_sos: number;
+  people_in_affected_zones: number;
+  people_marked_safe: number;
+  people_requiring_help: number;
+  available_responders: number;
+  active_response_tasks: number;
+}
+
+export interface AdminAlertResponse {
+  id: number;
+  title: string;
+  message: string;
+  severity: string;
+  created_at: string;
+  external_id?: string;
+  expires_at?: string;
+  event?: string;
+  urgency?: string;
+  certainty?: string;
+  area?: string;
+  is_active: boolean;
+  polygons?: string;
+  source?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_source?: string | null;
+  locations?: AlertLocation[];
+}
+
+export interface AdminSOSResponse {
+  id: number;
+  reporting_user_id: number;
+  reporting_user_name?: string | null;
+  assigned_responder_id?: number | null;
+  assigned_responder_name?: string | null;
+  latitude: number;
+  longitude: number;
+  location_accuracy?: number | null;
+  location_timestamp?: number | null;
+  emergency_type?: string | null;
+  emergency_details?: string | null;
+  status: SOSStatus;
+  responder_type?: SOSResponderType | null;
+  created_at: string;
+  updated_at: string;
+  accepted_at?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface AdminResponderResponse {
+  id: number;
+  full_name: string;
+  email: string;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  location_accuracy?: number | null;
+  last_location_update?: string | null;
+  is_online: boolean;
+  active_sos_id?: number | null;
+  active_sos_status?: SOSStatus | null;
+}
+
+export interface AdminUserResponse {
+  id: number;
+  full_name: string;
+  email: string;
+  role: string;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  location_accuracy?: number | null;
+  last_location_update?: string | null;
+  location_visibility: boolean;
+  is_online: boolean;
+  created_at?: string | null;
+}
+
+export interface AdminIncidentHistoryResponse {
+  id: number;
+  reporting_user_id: number;
+  reporting_user_name?: string | null;
+  assigned_responder_id?: number | null;
+  assigned_responder_name?: string | null;
+  latitude: number;
+  longitude: number;
+  location_accuracy?: number | null;
+  emergency_type?: string | null;
+  emergency_details?: string | null;
+  status: SOSStatus;
+  responder_type?: SOSResponderType | null;
+  created_at: string;
+  updated_at: string;
+  accepted_at?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface AdminZoneStatsResponse {
+  total_people_detected: number;
+  people_requiring_help: number;
+  active_sos: number;
+  people_helped: number;
+  people_marked_safe: number;
+  responders_active: number;
+}

@@ -170,6 +170,38 @@
 | CRUD operations for hospitals | 🚧 Partial | Only GET and POST exist; no PUT or DELETE |
 | CRUD operations for disasters | 🚧 Partial | Only GET, GET /active, POST exist; no PUT or DELETE |
 | CRUD operations for alerts | 🚧 Partial | Only GET, POST, GET /history exist; no PUT or DELETE |
+| **Admin overview statistics** | ✅ Implemented | Active alerts, SOS, people in zones, responders |
+| **Live disaster map** | ✅ Implemented | Reuses MapPage components via iframe |
+| **SOS management by status** | ✅ Implemented | Grouped: NEW, ACKNOWLEDGED, ASSIGNED, RESPONDING, RESOLVED |
+| **Admin SOS actions** | ✅ Implemented | Acknowledge, assign responder, update status |
+| **Nearby responders list** | ✅ Implemented | Online users with location, assign to SOS |
+| **Affected zone statistics** | ✅ Implemented | People in zone, SOS, helped, safe, responders |
+| **Government alerts overview** | ✅ Implemented | Active CAP alerts with locations |
+| **Incident history** | ✅ Implemented | Filterable by status, date, location |
+
+## SOS Emergency Response
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **SOS incident creation** | ✅ Implemented | POST /api/sos with location, type, details |
+| **SOS lifecycle management** | ✅ Implemented | 11 status states (ACTIVE → RESOLVED) |
+| **Nearby SOS detection** | ✅ Implemented | Dashboard card with accept button |
+| **Responder acceptance** | ✅ Implemented | POST /api/sos/{id}/accept |
+| **Status progression** | ✅ Implemented | Responder: ACCEPTED → EN_ROUTE → HELPING → COMPLETED |
+| **Victim safety confirmation** | ✅ Implemented | POST /api/sos/{id}/confirm-safe |
+| **Navigation to victim** | ✅ Implemented | MapPage integration with routing |
+| **Secret responder tab** | ✅ Implemented | Only visible when assigned to active SOS |
+| **Admin SOS oversight** | ✅ Implemented | Full CRUD + status override + assignment |
+| **Incident history preservation** | ✅ Implemented | Resolved SOS in admin history |
+
+## Notifications
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Browser notification delivery** | ✅ Implemented | Wired to nearby SOS and critical alerts |
+| **Alert sound** | ✅ Implemented | Web Audio API, plays on notifications |
+| **Notification deduplication** | ✅ Implemented | Tracks last notified SOS/alert ID |
+| **Permission management** | ✅ Implemented | Settings-controlled, requested on mount |
 
 ## Future Features
 
